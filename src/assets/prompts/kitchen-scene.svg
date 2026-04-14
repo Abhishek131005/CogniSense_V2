@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Kitchen action scene</title>
+  <desc id="desc">A mother washes dishes while two children reach for cookies from a high shelf.</desc>
+  <rect width="960" height="560" fill="#f3efe6"/>
+  <rect y="300" width="960" height="260" fill="#d9cbb8"/>
+  <rect x="610" y="170" width="280" height="150" rx="12" fill="#ceb79a"/>
+  <rect x="626" y="190" width="246" height="112" fill="#dbcab1"/>
+  <rect x="680" y="202" width="85" height="70" fill="#8fc0d7"/>
+  <rect x="220" y="120" width="220" height="22" rx="11" fill="#8c6942"/>
+  <rect x="320" y="62" width="38" height="56" rx="10" fill="#f7e5b5" stroke="#ad8848" stroke-width="2"/>
+  <circle cx="420" cy="210" r="10" fill="#efcf78"/>
+  <circle cx="440" cy="198" r="10" fill="#efcf78"/>
+  <circle cx="456" cy="216" r="10" fill="#efcf78"/>
+  <line x1="360" y1="142" x2="440" y2="142" stroke="#4b4f54" stroke-width="8" stroke-linecap="round"/>
+  <line x1="440" y1="142" x2="440" y2="210" stroke="#4b4f54" stroke-width="8" stroke-linecap="round"/>
+  <line x1="440" y1="210" x2="370" y2="236" stroke="#4b4f54" stroke-width="8" stroke-linecap="round"/>
+  <rect x="340" y="242" width="52" height="86" rx="12" fill="#5c8f68"/>
+  <line x1="352" y1="328" x2="346" y2="368" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="380" y1="328" x2="386" y2="368" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="366" cy="220" r="16" fill="#f2c8a6"/>
+  <path d="M352 208q14-18 28 0" fill="#3a2d29"/>
+  <rect x="270" y="278" width="52" height="80" rx="12" fill="#c4a84f"/>
+  <line x1="282" y1="358" x2="278" y2="394" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="310" y1="358" x2="314" y2="394" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="296" cy="258" r="15" fill="#f2c8a6"/>
+  <path d="M284 248q12-14 24 0" fill="#5a3d2c"/>
+  <circle cx="740" cy="232" r="16" fill="#f2c8a6"/>
+  <path d="M728 222q12-14 24 0" fill="#3a2d29"/>
+  <rect x="714" y="250" width="54" height="84" rx="12" fill="#7a9fbf"/>
+  <line x1="722" y1="266" x2="690" y2="248" stroke="#4b4f54" stroke-width="6" stroke-linecap="round"/>
+  <line x1="760" y1="266" x2="792" y2="248" stroke="#4b4f54" stroke-width="6" stroke-linecap="round"/>
+  <line x1="728" y1="334" x2="720" y2="372" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="754" y1="334" x2="762" y2="372" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="692" cy="242" rx="24" ry="10" fill="#d9d4cd"/>
+</svg>

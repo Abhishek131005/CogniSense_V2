@@ -7,70 +7,33 @@
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
+import HomePage from './pages/HomePage'
 import CDTLandingPage from './pages/CDTLandingPage'
 import DrawingPage from './pages/DrawingPage'
 import ResultPage from './pages/ResultPage'
+import SpeechPage from './pages/SpeechPage'
+import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
   return (
     <AppProvider>
       <BrowserRouter>
         <Routes>
-          {/* Redirect root to CDT */}
-          <Route path="/" element={<Navigate to="/cdt" replace />} />
+          <Route path="/" element={<HomePage />} />
 
           {/* CDT Module routes */}
           <Route path="/cdt"                         element={<CDTLandingPage />} />
           <Route path="/cdt/draw"                    element={<DrawingPage />} />
           <Route path="/cdt/result/:assessmentId"    element={<ResultPage />} />
 
-          {/* Placeholder routes for sibling modules */}
-          <Route path="/speech"  element={<ComingSoon name="Speech Module" />} />
-          <Route path="/profile" element={<ComingSoon name="Patient Profile" />} />
+          {/* Speech + Profile routes */}
+          <Route path="/speech"  element={<SpeechPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
 
           {/* 404 */}
-          <Route path="*" element={<Navigate to="/cdt" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AppProvider>
-  )
-}
-
-/** Placeholder for sibling module routes */
-function ComingSoon({ name }) {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-base)',
-        flexDirection: 'column',
-        gap: 12,
-      }}
-    >
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: 'var(--text-muted)',
-        }}
-      >
-        Coming Soon
-      </span>
-      <p
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: '2rem',
-          fontWeight: 500,
-          color: 'var(--text-primary)',
-        }}
-      >
-        {name}
-      </p>
-    </div>
   )
 }

@@ -17,6 +17,17 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
+const enableFirebaseAuth = import.meta.env.VITE_ENABLE_FIREBASE_AUTH === 'true'
+
+const requiredEnvKeys = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID',
+]
+
 const firebaseConfig = {
   apiKey:             import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain:         import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -28,16 +39,38 @@ const firebaseConfig = {
 
 export const IS_MOCK = false
 
-let app, auth, db, storage, googleProvider;
+let app
+let auth
+let db
+let storage
+let googleProvider
+let firebaseInitError = null
+let firebaseAuthError = null
 
-try {
-  app = initializeApp(firebaseConfig)
-  auth = getAuth(app)
-  db = getFirestore(app)
-  storage = getStorage(app)
-  googleProvider = new GoogleAuthProvider()
-} catch (error) {
-  console.error('[Firebase Init Error] Make sure all VITE_FIREBASE_* keys are valid inside your .env file.', error)
+const missingKeys = requiredEnvKeys.filter((k) => !import.meta.env[k])
+
+if (missingKeys.length > 0) {
+  firebaseInitError = new Error(`Missing env vars: ${missingKeys.join(', ')}`)
+  console.error('[Firebase Init Error] Missing required VITE_FIREBASE_* variables.', firebaseInitError)
+} else {
+  try {
+    app = initializeApp(firebaseConfig)
+    db = getFirestore(app)
+    storage = getStorage(app)
+  } catch (error) {
+    firebaseInitError = error
+    console.error('[Firebase Init Error] Could not initialize Firebase app.', error)
+  }
+
+  if (app && enableFirebaseAuth) {
+    try {
+      auth = getAuth(app)
+      googleProvider = new GoogleAuthProvider()
+    } catch (error) {
+      firebaseAuthError = error
+      console.warn('[Firebase Auth Warning] Auth initialization failed. Firestore can still work if rules allow.', error)
+    }
+  }
 }
 
-export { app, auth, db, storage, googleProvider }
+export { app, auth, db, storage, googleProvider, firebaseInitError, firebaseAuthError }

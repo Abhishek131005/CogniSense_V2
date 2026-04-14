@@ -1,0 +1,1363 @@
+/**
+ * src/pages/ProfilePage.jsx
+ *
+ * Route: /profile
+ * Unified patient profile with longitudinal Brain Velocity analytics.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { ClipboardList, Mic, PenLine, Trash2, UserPlus, UserRound, X } from 'lucide-react'
+
+import Navbar from '../components/layout/Navbar'
+import Footer from '../components/layout/Footer'
+import Button from '../components/ui/Button'
+import Spinner from '../components/ui/Spinner'
+import { useApp } from '../context/AppContext'
+import { getAssessments } from '../services/firestore'
+
+function riskClass(score) {
+  if (score < 25) return 0
+  if (score < 45) return 1
+  if (score < 65) return 2
+  return 3
+}
+
+function riskColor(classIdx) {
+  if (classIdx === 3) return 'var(--risk-critical)'
+  if (classIdx === 2) return 'var(--risk-high)'
+  if (classIdx === 1) return 'var(--risk-medium)'
+  return 'var(--risk-low)'
+}
+
+function shortClassLabel(label) {
+  if (!label) return 'Unknown'
+  const right = String(label).split('-')[1]
+  return right ? right.trim() : String(label)
+}
+
+function toValidDate(value) {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value : null
+  }
+
+  if (typeof value?.toDate === 'function') {
+    const converted = value.toDate()
+    return converted instanceof Date && Number.isFinite(converted.getTime()) ? converted : null
+  }
+
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    const millis = (value.seconds * 1000) + Math.floor((value.nanoseconds || 0) / 1000000)
+    const fromSeconds = new Date(millis)
+    return Number.isFinite(fromSeconds.getTime()) ? fromSeconds : null
+  }
+
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime()) ? parsed : null
+}
+
+function pickFirstDate(...values) {
+  for (const value of values) {
+    const date = toValidDate(value)
+    if (date) return date
+  }
+  return null
+}
+
+function formatDate(value) {
+  const d = toValidDate(value)
+  if (!d) return 'NA'
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function formatDateShort(value) {
+  const d = toValidDate(value)
+  if (!d) return '--'
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+}
+
+function toSessionEntry(assessment) {
+  const timestamp = pickFirstDate(
+    assessment.submitTimestamp,
+    assessment.clientSubmitTimestamp,
+    assessment.startTimestamp,
+    assessment.createdAt,
+    assessment.date,
+    assessment.speech?.date,
+    assessment.speech?.createdAt,
+    assessment.speech?.submitTimestamp,
+    assessment.raw?.date,
+  )
+
+  if (assessment.type === 'speech') {
+    const speech = assessment.speech || {}
+    const score = Number(assessment.speechRiskScore ?? speech.risk_score ?? 0)
+    const classLabel = assessment.speechRiskClass ?? speech.risk_class ?? 'Unknown'
+
+    return {
+      id: assessment.id,
+      type: 'speech',
+      date: timestamp,
+      score,
+      classLabel,
+      flags: speech.interpretation?.key_flags || assessment.flags || [],
+      speech,
+      raw: assessment,
+    }
+  }
+
+  const score = Number(assessment.cdtRiskScore ?? 0)
+  return {
+    id: assessment.id,
+    type: 'cdt',
+    date: timestamp,
+    score,
+    classLabel: assessment.riskLabel || 'Unknown',
+    flags: assessment.flags || [],
+    features: assessment.features || {},
+    raw: assessment,
+  }
+}
+
+function computeBrainVelocity(sessions) {
+  const datedSessions = sessions.filter(session => toValidDate(session.date))
+  if (datedSessions.length < 2) return null
+
+  const sorted = [...datedSessions].sort((a, b) => toValidDate(a.date) - toValidDate(b.date))
+  const baseline = toValidDate(sorted[0].date)
+  if (!baseline) return null
+
+  const xs = sorted.map((session) => {
+    const sessionDate = toValidDate(session.date)
+    if (!sessionDate) return 0
+    const days = (sessionDate - baseline) / (1000 * 60 * 60 * 24)
+    return days / 30
+  })
+  const ys = sorted.map(session => Number(session.score || 0))
+  const n = xs.length
+
+  const xm = xs.reduce((sum, x) => sum + x, 0) / n
+  const ym = ys.reduce((sum, y) => sum + y, 0) / n
+  const denom = xs.reduce((sum, x) => sum + (x - xm) ** 2, 0)
+  if (denom === 0) return 0
+
+  const slope = xs.reduce((sum, x, idx) => sum + (x - xm) * (ys[idx] - ym), 0) / denom
+  return Number.isFinite(slope) ? slope : null
+}
+
+function velocityBadgeClass(value) {
+  if (value === null) return ''
+  const abs = Math.abs(value)
+  if (abs < 0.5) return 'stable'
+  if (abs < 1.5) return 'slow'
+  if (abs < 2.5) return 'fast'
+  return 'critical'
+}
+
+function drawVelocityChart(canvas, sessions) {
+  const datedSessions = sessions.filter(session => toValidDate(session.date))
+  if (!canvas || datedSessions.length < 2) return
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const sorted = [...datedSessions].sort((a, b) => toValidDate(a.date) - toValidDate(b.date))
+  const dpr = window.devicePixelRatio || 1
+  const cssWidth = canvas.clientWidth || 640
+  const cssHeight = 170
+  canvas.width = Math.floor(cssWidth * dpr)
+  canvas.height = Math.floor(cssHeight * dpr)
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 18, right: 20, bottom: 30, left: 34 }
+  const w = cssWidth - pad.left - pad.right
+  const h = cssHeight - pad.top - pad.bottom
+
+  const scores = sorted.map(s => Number(s.score || 0))
+  const minS = Math.min(...scores, 0)
+  const maxS = Math.max(...scores, 100)
+  const range = Math.max(1, maxS - minS)
+
+  const toX = (idx) => {
+    if (scores.length === 1) return pad.left + w / 2
+    return pad.left + (idx / (scores.length - 1)) * w
+  }
+  const toY = (score) => pad.top + h - ((score - minS) / range) * h
+
+  ctx.clearRect(0, 0, cssWidth, cssHeight)
+
+  const zones = [
+    { y1: 0, y2: 25, color: 'rgba(92,143,104,0.08)' },
+    { y1: 25, y2: 45, color: 'rgba(196,168,79,0.08)' },
+    { y1: 45, y2: 65, color: 'rgba(196,122,58,0.08)' },
+    { y1: 65, y2: 100, color: 'rgba(176,64,64,0.08)' },
+  ]
+
+  zones.forEach((zone) => {
+    const y1 = pad.top + h - ((zone.y1 - minS) / range) * h
+    const y2 = pad.top + h - ((zone.y2 - minS) / range) * h
+    ctx.fillStyle = zone.color
+    ctx.fillRect(pad.left, Math.min(y1, y2), w, Math.abs(y2 - y1))
+  })
+
+  ;[0, 25, 50, 75, 100].forEach((tick) => {
+    const y = toY(tick)
+    ctx.strokeStyle = '#d4cfc5'
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.moveTo(pad.left, y)
+    ctx.lineTo(pad.left + w, y)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    ctx.fillStyle = '#7a7468'
+    ctx.font = '9px DM Mono, monospace'
+    ctx.fillText(String(tick), 2, y + 3)
+  })
+
+  if (scores.length >= 2) {
+    const xs = scores.map((_, idx) => idx)
+    const n = xs.length
+    const xm = xs.reduce((sum, x) => sum + x, 0) / n
+    const ym = scores.reduce((sum, y) => sum + y, 0) / n
+    const slope = xs.reduce((sum, x, idx) => sum + (x - xm) * (scores[idx] - ym), 0)
+      / xs.reduce((sum, x) => sum + (x - xm) ** 2, 0)
+    const intercept = ym - slope * xm
+
+    ctx.strokeStyle = 'rgba(196,122,58,0.5)'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([6, 4])
+    ctx.beginPath()
+    ctx.moveTo(toX(0), toY(intercept))
+    ctx.lineTo(toX(n - 1), toY(intercept + slope * (n - 1)))
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  ctx.strokeStyle = '#5c8f68'
+  ctx.lineWidth = 2.5
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  scores.forEach((score, idx) => {
+    if (idx === 0) {
+      ctx.moveTo(toX(idx), toY(score))
+    } else {
+      ctx.lineTo(toX(idx), toY(score))
+    }
+  })
+  ctx.stroke()
+
+  scores.forEach((score, idx) => {
+    const klass = riskClass(score)
+    const colors = ['#5c8f68', '#c4a84f', '#c47a3a', '#b04040']
+
+    ctx.beginPath()
+    ctx.arc(toX(idx), toY(score), 5, 0, Math.PI * 2)
+    ctx.fillStyle = colors[klass]
+    ctx.fill()
+    ctx.strokeStyle = '#f4f1eb'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    ctx.fillStyle = '#0f1410'
+    ctx.font = 'bold 10px DM Mono, monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(String(Math.round(score)), toX(idx), toY(score) - 10)
+  })
+
+  sorted.forEach((session, idx) => {
+    ctx.fillStyle = '#7a7468'
+    ctx.font = '9px DM Mono, monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(formatDateShort(session.date), toX(idx), cssHeight - 6)
+  })
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3"
+      style={{
+        padding: '4px 0',
+        borderBottom: '1px dashed rgba(0,0,0,0.06)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: '0.8125rem',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.75rem',
+          color: 'var(--text-primary)',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  )
+}
+
+export default function ProfilePage() {
+  const {
+    patients,
+    currentPatient,
+    setCurrentPatient,
+    patientsLoading,
+    patientsError,
+    addNewPatient,
+    removePatient,
+  } = useApp()
+
+  const location = useLocation()
+  const navigate = useNavigate()
+  const chartCanvasRef = useRef(null)
+
+  const [assessments, setAssessments] = useState([])
+  const [loadingAssessments, setLoadingAssessments] = useState(false)
+  const [assessmentError, setAssessmentError] = useState(null)
+  const [expandedSessions, setExpandedSessions] = useState({})
+
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [creatingPatient, setCreatingPatient] = useState(false)
+  const [deletingPatient, setDeletingPatient] = useState(false)
+  const [createError, setCreateError] = useState(null)
+  const [newPatientForm, setNewPatientForm] = useState({
+    name: '',
+    age: '',
+    gender: 'Female',
+    phone: '',
+    notes: '',
+  })
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('new') === '1') {
+      setShowCreateModal(true)
+    }
+  }, [location.search])
+
+  useEffect(() => {
+    if (!currentPatient?.id) {
+      setAssessments([])
+      return
+    }
+
+    setLoadingAssessments(true)
+    setAssessmentError(null)
+
+    getAssessments(currentPatient.id)
+      .then((rows) => {
+        setAssessments(rows)
+      })
+      .catch((err) => {
+        setAssessmentError(err.message || 'Failed to load assessments')
+      })
+      .finally(() => {
+        setLoadingAssessments(false)
+      })
+  }, [currentPatient?.id])
+
+  useEffect(() => {
+    if (!currentPatient && patients.length > 0) {
+      setCurrentPatient(patients[0])
+    }
+  }, [patients, currentPatient, setCurrentPatient])
+
+  const sessions = useMemo(() => {
+    return assessments
+      .map(toSessionEntry)
+      .filter(session => Number.isFinite(session.score))
+      .sort((a, b) => {
+        const ad = toValidDate(a.date)
+        const bd = toValidDate(b.date)
+        if (!ad && !bd) return 0
+        if (!ad) return 1
+        if (!bd) return -1
+        return ad - bd
+      })
+  }, [assessments])
+
+  const sessionsDesc = useMemo(() => [...sessions].reverse(), [sessions])
+  const datedSessions = useMemo(
+    () => sessions.filter(session => toValidDate(session.date)),
+    [sessions],
+  )
+
+  const speechCount = useMemo(
+    () => sessions.filter((session) => session.type === 'speech').length,
+    [sessions],
+  )
+  const cdtCount = useMemo(
+    () => sessions.filter((session) => session.type !== 'speech').length,
+    [sessions],
+  )
+
+  const latestSession = sessions.length ? sessions[sessions.length - 1] : null
+  const firstSession = datedSessions.length ? datedSessions[0] : null
+  const brainVelocity = useMemo(() => computeBrainVelocity(sessions), [sessions])
+  const velocityClass = velocityBadgeClass(brainVelocity)
+
+  useEffect(() => {
+    if (!chartCanvasRef.current || datedSessions.length < 2) return
+    drawVelocityChart(chartCanvasRef.current, sessions)
+  }, [datedSessions.length, sessions])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!chartCanvasRef.current || datedSessions.length < 2) return
+      drawVelocityChart(chartCanvasRef.current, sessions)
+    }
+
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [datedSessions.length, sessions])
+
+  const openCreateModal = () => {
+    setCreateError(null)
+    setShowCreateModal(true)
+  }
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false)
+    setCreateError(null)
+
+    const params = new URLSearchParams(location.search)
+    if (params.get('new') === '1') {
+      params.delete('new')
+      const search = params.toString()
+      navigate({ pathname: '/profile', search: search ? `?${search}` : '' }, { replace: true })
+    }
+  }
+
+  const updateFormField = (key, value) => {
+    setNewPatientForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleCreatePatient = async (event) => {
+    event.preventDefault()
+
+    if (!newPatientForm.name.trim()) {
+      setCreateError('Patient name is required.')
+      return
+    }
+
+    const age = Number(newPatientForm.age)
+    if (!Number.isFinite(age) || age < 1) {
+      setCreateError('Please enter a valid age.')
+      return
+    }
+
+    setCreatingPatient(true)
+    setCreateError(null)
+    try {
+      const created = await addNewPatient({
+        name: newPatientForm.name.trim(),
+        age,
+        gender: newPatientForm.gender,
+        phone: newPatientForm.phone.trim(),
+        notes: newPatientForm.notes.trim(),
+      })
+      setCurrentPatient(created)
+      setNewPatientForm({ name: '', age: '', gender: 'Female', phone: '', notes: '' })
+      closeCreateModal()
+    } catch (error) {
+      setCreateError(error.message || 'Failed to create patient profile.')
+    } finally {
+      setCreatingPatient(false)
+    }
+  }
+
+  const handleDeletePatient = async () => {
+    if (!currentPatient || deletingPatient) return
+
+    const shouldDelete = window.confirm(
+      'Delete this patient and all their assessment sessions? This cannot be undone.',
+    )
+    if (!shouldDelete) return
+
+    setDeletingPatient(true)
+    setAssessmentError(null)
+
+    try {
+      await removePatient(currentPatient.id)
+      setAssessments([])
+      setExpandedSessions({})
+    } catch (error) {
+      setAssessmentError(error.message || 'Failed to delete patient.')
+    } finally {
+      setDeletingPatient(false)
+    }
+  }
+
+  const toggleSession = (sessionId) => {
+    setExpandedSessions(prev => ({
+      ...prev,
+      [sessionId]: !prev[sessionId],
+    }))
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-base)' }}>
+      <Navbar hideCta />
+
+      <main className="flex-1">
+        <div className="container py-8">
+          <div className="mb-8">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="label-mono mb-2">Patient Registry</p>
+                <h1
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'clamp(2rem, 4vw, 2.75rem)',
+                    lineHeight: 1.1,
+                  }}
+                >
+                  Unified Patient Profile
+                </h1>
+                <p
+                  className="mt-2"
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.9375rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Review patient trends across speech and clock drawing sessions, including Brain Velocity.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<UserPlus size={14} />}
+                onClick={openCreateModal}
+              >
+                Add New Patient
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-[320px_1fr] gap-6">
+            <aside
+              className="rounded-xl overflow-hidden"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-light)',
+                boxShadow: 'var(--shadow-card)',
+              }}
+            >
+              <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--divider)' }}>
+                <p className="label-mono">Patients</p>
+              </div>
+
+              {patientsLoading ? (
+                <div className="p-6 flex justify-center">
+                  <Spinner size="md" />
+                </div>
+              ) : patientsError ? (
+                <p
+                  className="p-4"
+                  style={{ fontFamily: 'var(--font-body)', fontSize: '0.875rem', color: 'var(--risk-critical)' }}
+                >
+                  {patientsError}
+                </p>
+              ) : (
+                <ul className="max-h-[500px] overflow-y-auto">
+                  {patients.map((patient) => (
+                    <li
+                      key={patient.id}
+                      className="px-4 py-3 cursor-pointer transition-colors"
+                      style={{
+                        borderBottom: '1px solid var(--border-light)',
+                        background:
+                          currentPatient?.id === patient.id
+                            ? 'var(--accent-glow)'
+                            : 'transparent',
+                      }}
+                      onClick={() => setCurrentPatient(patient)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="inline-flex items-center justify-center rounded-full"
+                          style={{
+                            width: 30,
+                            height: 30,
+                            background: 'rgba(0,0,0,0.05)',
+                          }}
+                        >
+                          <UserRound size={14} color="var(--text-secondary)" />
+                        </span>
+                        <div className="min-w-0">
+                          <p
+                            className="truncate"
+                            style={{
+                              fontFamily: 'var(--font-body)',
+                              fontSize: '0.9rem',
+                              fontWeight: 500,
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            {patient.name}
+                          </p>
+                          <p
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '0.6875rem',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {patient.age}y · {patient.gender} · {patient.sessionCount || 0} sessions
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </aside>
+
+            <section>
+              {!currentPatient ? (
+                <div
+                  className="rounded-xl p-8 text-center"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-light)',
+                  }}
+                >
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem' }}>Select a patient</p>
+                  <p
+                    className="mt-2"
+                    style={{ fontFamily: 'var(--font-body)', color: 'var(--text-secondary)' }}
+                  >
+                    Choose a patient from the left panel to review longitudinal profile history.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="rounded-xl p-5 mb-4"
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <p className="label-mono mb-1">Selected Patient</p>
+                    <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', lineHeight: 1.1 }}>
+                      {currentPatient.name}
+                    </h2>
+                    <p
+                      className="mt-1"
+                      style={{ fontFamily: 'var(--font-body)', color: 'var(--text-secondary)' }}
+                    >
+                      ID: {currentPatient.id} · {currentPatient.age} years · {currentPatient.gender}
+                    </p>
+
+                    <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div
+                        className="rounded-lg p-3"
+                        style={{
+                          background: 'rgba(196,168,79,0.12)',
+                          border: '1px solid rgba(196,168,79,0.25)',
+                        }}
+                      >
+                        <p className="label-mono">Latest Score</p>
+                        <p
+                          style={{
+                            fontFamily: 'var(--font-display)',
+                            fontSize: '1.5rem',
+                            color: latestSession ? riskColor(riskClass(latestSession.score)) : 'var(--text-muted)',
+                          }}
+                        >
+                          {latestSession ? Math.round(latestSession.score) : '--'}
+                        </p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {latestSession ? shortClassLabel(latestSession.classLabel) : 'No sessions'}
+                        </p>
+                      </div>
+
+                      <div
+                        className="rounded-lg p-3"
+                        style={{
+                          background: 'rgba(92,143,104,0.12)',
+                          border: '1px solid rgba(92,143,104,0.25)',
+                        }}
+                      >
+                        <p className="label-mono">Sessions</p>
+                        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem' }}>{sessions.length}</p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {speechCount} Speech · {cdtCount} CDT
+                        </p>
+                      </div>
+
+                      <div
+                        className="rounded-lg p-3"
+                        style={{
+                          background: 'rgba(0,0,0,0.03)',
+                          border: '1px solid var(--border-light)',
+                        }}
+                      >
+                        <p className="label-mono">Brain Velocity</p>
+                        <p
+                          style={{
+                            fontFamily: 'var(--font-display)',
+                            fontSize: '1.5rem',
+                            color:
+                              brainVelocity === null
+                                ? 'var(--text-muted)'
+                                : Math.abs(brainVelocity) > 2
+                                  ? 'var(--risk-critical)'
+                                  : 'var(--text-primary)',
+                          }}
+                        >
+                          {brainVelocity === null ? '--' : `${brainVelocity > 0 ? '+' : ''}${brainVelocity.toFixed(1)}`}
+                        </p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          pts/month
+                        </p>
+                      </div>
+
+                      <div
+                        className="rounded-lg p-3"
+                        style={{
+                          background: 'rgba(0,0,0,0.03)',
+                          border: '1px solid var(--border-light)',
+                        }}
+                      >
+                        <p className="label-mono">First Session</p>
+                        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}>
+                          {firstSession ? formatDateShort(firstSession.date) : '--'}
+                        </p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {firstSession ? formatDate(firstSession.date) : 'No data'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link to="/cdt">
+                        <Button size="sm" icon={<PenLine size={14} />}>New CDT Assessment</Button>
+                      </Link>
+                      <Link to="/speech">
+                        <Button variant="accent" size="sm" icon={<Mic size={14} />}>New Speech Assessment</Button>
+                      </Link>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 size={14} />}
+                        onClick={handleDeletePatient}
+                        loading={deletingPatient}
+                      >
+                        Delete Patient
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-xl overflow-hidden mb-4"
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--divider)' }}>
+                      <p className="label-mono">Brain Velocity Trend</p>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.625rem',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          padding: '3px 8px',
+                          borderRadius: 999,
+                          background:
+                            velocityClass === 'critical'
+                              ? 'rgba(176,64,64,0.15)'
+                              : velocityClass === 'fast'
+                                ? 'rgba(196,122,58,0.15)'
+                                : velocityClass === 'slow'
+                                  ? 'rgba(196,168,79,0.18)'
+                                  : 'rgba(92,143,104,0.15)',
+                          color:
+                            velocityClass === 'critical'
+                              ? 'var(--risk-critical)'
+                              : velocityClass === 'fast'
+                                ? 'var(--risk-high)'
+                                : velocityClass === 'slow'
+                                  ? 'var(--risk-medium)'
+                                  : 'var(--risk-low)',
+                        }}
+                      >
+                        {brainVelocity === null
+                          ? 'Need 2+ sessions'
+                          : `${brainVelocity > 0 ? '+' : ''}${brainVelocity.toFixed(2)} pts/month`}
+                      </span>
+                    </div>
+
+                    <div className="p-4">
+                      {datedSessions.length < 2 ? (
+                        <div
+                          className="rounded-lg p-6 text-center"
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: 'var(--text-muted)',
+                            fontFamily: 'var(--font-body)',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          Need at least 2 sessions to compute trajectory.
+                        </div>
+                      ) : (
+                        <>
+                          <canvas
+                            ref={chartCanvasRef}
+                            style={{ width: '100%', height: 170, borderRadius: 10, background: 'var(--canvas-bg)' }}
+                            aria-label="Brain velocity chart"
+                          />
+                          <p
+                            className="mt-2"
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '0.6875rem',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            Brain Velocity is the slope of cognitive risk score over time. Values below -2.5 pts/month indicate rapid decline.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-xl overflow-hidden"
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--divider)' }}>
+                      <p className="label-mono">Assessment Timeline</p>
+                    </div>
+
+                    {loadingAssessments ? (
+                      <div className="p-6 flex justify-center">
+                        <Spinner size="md" />
+                      </div>
+                    ) : assessmentError ? (
+                      <p
+                        className="p-4"
+                        style={{ fontFamily: 'var(--font-body)', fontSize: '0.875rem', color: 'var(--risk-critical)' }}
+                      >
+                        {assessmentError}
+                      </p>
+                    ) : sessionsDesc.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <ClipboardList size={28} color="var(--text-muted)" style={{ margin: '0 auto 8px' }} />
+                        <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-secondary)' }}>
+                          No assessments yet for this patient.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div
+                          className="px-4 py-2"
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(110px,1.1fr) 72px minmax(120px,1fr) minmax(140px,1.5fr) 32px',
+                            gap: 10,
+                            borderBottom: '1px solid var(--border-light)',
+                          }}
+                        >
+                          <span className="label-mono">Date</span>
+                          <span className="label-mono">Score</span>
+                          <span className="label-mono">Class</span>
+                          <span className="label-mono">Key Flags</span>
+                          <span className="label-mono"> </span>
+                        </div>
+
+                        {sessionsDesc.map((session) => {
+                          const classIdx = riskClass(Number(session.score || 0))
+                          const color = riskColor(classIdx)
+                          const open = !!expandedSessions[session.id]
+                          const previewFlags = session.flags.slice(0, 2)
+
+                          return (
+                            <div key={session.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleSession(session.id)}
+                                className="w-full px-4 py-3"
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'minmax(110px,1.1fr) 72px minmax(120px,1fr) minmax(140px,1.5fr) 32px',
+                                  gap: 10,
+                                  alignItems: 'center',
+                                  textAlign: 'left',
+                                  background: open ? 'rgba(0,0,0,0.02)' : 'transparent',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontFamily: 'var(--font-body)',
+                                    fontSize: '0.8125rem',
+                                    color: 'var(--text-secondary)',
+                                  }}
+                                >
+                                  {formatDate(session.date)}
+                                </span>
+
+                                <span
+                                  style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: '0.875rem',
+                                    color,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {Math.round(Number(session.score || 0))}
+                                </span>
+
+                                <span
+                                  style={{
+                                    fontFamily: 'var(--font-body)',
+                                    fontSize: '0.8125rem',
+                                    color: 'var(--text-primary)',
+                                  }}
+                                >
+                                  {shortClassLabel(session.classLabel)}
+                                  <span
+                                    style={{
+                                      marginLeft: 6,
+                                      fontFamily: 'var(--font-mono)',
+                                      fontSize: '0.625rem',
+                                      color: 'var(--text-muted)',
+                                    }}
+                                  >
+                                    {session.type.toUpperCase()}
+                                  </span>
+                                </span>
+
+                                <span className="flex flex-wrap gap-1" style={{ minHeight: 20 }}>
+                                  {previewFlags.length === 0 ? (
+                                    <span
+                                      style={{
+                                        fontFamily: 'var(--font-body)',
+                                        fontSize: '0.75rem',
+                                        color: 'var(--text-muted)',
+                                      }}
+                                    >
+                                      No flags
+                                    </span>
+                                  ) : (
+                                    previewFlags.map((flag) => (
+                                      <span
+                                        key={`${session.id}-${flag}`}
+                                        style={{
+                                          fontFamily: 'var(--font-body)',
+                                          fontSize: '0.6875rem',
+                                          padding: '2px 6px',
+                                          borderRadius: 999,
+                                          background: 'rgba(0,0,0,0.05)',
+                                          color: 'var(--text-secondary)',
+                                        }}
+                                      >
+                                        {String(flag).slice(0, 26)}
+                                      </span>
+                                    ))
+                                  )}
+                                </span>
+
+                                <span
+                                  style={{
+                                    textAlign: 'center',
+                                    color: 'var(--text-muted)',
+                                    transform: open ? 'rotate(180deg)' : 'none',
+                                    transition: 'transform 0.2s',
+                                  }}
+                                >
+                                  v
+                                </span>
+                              </button>
+
+                              {open && (
+                                <div
+                                  className="px-4 pb-4"
+                                  style={{
+                                    background: 'rgba(0,0,0,0.015)',
+                                  }}
+                                >
+                                  {session.type === 'speech' ? (
+                                    <div className="grid md:grid-cols-3 gap-4">
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">Acoustic</p>
+                                        <DetailRow
+                                          label="Speech Rate"
+                                          value={`${Number(session.speech?.acoustic?.speech_rate_syllables_per_min || 0).toFixed(1)} syll/min`}
+                                        />
+                                        <DetailRow
+                                          label="Pause Count"
+                                          value={`${session.speech?.acoustic?.pause_count || 0}`}
+                                        />
+                                        <DetailRow
+                                          label="Pause Ratio"
+                                          value={`${(Number(session.speech?.acoustic?.pause_ratio || 0) * 100).toFixed(1)}%`}
+                                        />
+                                        <DetailRow
+                                          label="F0 Mean"
+                                          value={`${Number(session.speech?.acoustic?.f0_mean_hz || 0).toFixed(1)} Hz`}
+                                        />
+                                        <DetailRow
+                                          label="Jitter"
+                                          value={`${(Number(session.speech?.acoustic?.jitter || 0) * 100).toFixed(3)}%`}
+                                        />
+                                        <DetailRow
+                                          label="Shimmer"
+                                          value={`${(Number(session.speech?.acoustic?.shimmer || 0) * 100).toFixed(3)}%`}
+                                        />
+                                        <DetailRow
+                                          label="HNR"
+                                          value={`${Number(session.speech?.acoustic?.hnr_db || 0).toFixed(2)} dB`}
+                                        />
+                                      </div>
+
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">Lexical</p>
+                                        <DetailRow
+                                          label="Language"
+                                          value={String(session.speech?.lexico_semantic?.detected_language || 'unknown').toUpperCase()}
+                                        />
+                                        <DetailRow
+                                          label="Word Count"
+                                          value={`${session.speech?.lexico_semantic?.word_count || 0}`}
+                                        />
+                                        <DetailRow
+                                          label="Unique Words"
+                                          value={`${session.speech?.lexico_semantic?.unique_word_count || 0}`}
+                                        />
+                                        <DetailRow
+                                          label="Type-Token"
+                                          value={`${Number(session.speech?.lexico_semantic?.type_token_ratio || 0).toFixed(4)}`}
+                                        />
+                                        <DetailRow
+                                          label="Filler Ratio"
+                                          value={`${(Number(session.speech?.lexico_semantic?.filler_word_ratio || 0) * 100).toFixed(2)}%`}
+                                        />
+
+                                        <p
+                                          className="mt-3"
+                                          style={{
+                                            fontFamily: 'var(--font-body)',
+                                            fontSize: '0.75rem',
+                                            color: 'var(--text-secondary)',
+                                            lineHeight: 1.5,
+                                          }}
+                                        >
+                                          {session.speech?.lexico_semantic?.transcript || 'No transcript available.'}
+                                        </p>
+                                      </div>
+
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">Flags</p>
+                                        {session.flags.length === 0 ? (
+                                          <p
+                                            style={{
+                                              fontFamily: 'var(--font-body)',
+                                              fontSize: '0.8125rem',
+                                              color: 'var(--risk-low)',
+                                            }}
+                                          >
+                                            No major flags.
+                                          </p>
+                                        ) : (
+                                          <ul className="space-y-1.5">
+                                            {session.flags.map(flag => (
+                                              <li
+                                                key={`${session.id}-${flag}`}
+                                                style={{
+                                                  fontFamily: 'var(--font-body)',
+                                                  fontSize: '0.8125rem',
+                                                  color: 'var(--text-secondary)',
+                                                }}
+                                              >
+                                                {flag}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">CDT Dynamics</p>
+                                        <DetailRow
+                                          label="Stroke Count"
+                                          value={`${session.features?.strokeCount ?? '--'}`}
+                                        />
+                                        <DetailRow
+                                          label="Revision Count"
+                                          value={`${session.features?.revisionCount ?? '--'}`}
+                                        />
+                                        <DetailRow
+                                          label="Mean Velocity"
+                                          value={`${Number(session.features?.meanVelocity || 0).toFixed(2)}`}
+                                        />
+                                        <DetailRow
+                                          label="Pause Count"
+                                          value={`${session.features?.pauseCount ?? '--'}`}
+                                        />
+                                        <DetailRow
+                                          label="Total Duration"
+                                          value={`${Math.round(Number(session.features?.totalDurationSec || 0))} sec`}
+                                        />
+                                      </div>
+
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">CDT Risk Detail</p>
+                                        <DetailRow
+                                          label="Risk Score"
+                                          value={`${Math.round(Number(session.score || 0))}`}
+                                        />
+                                        <DetailRow
+                                          label="Risk Label"
+                                          value={session.classLabel}
+                                        />
+
+                                        {session.flags.length > 0 && (
+                                          <ul className="mt-2 space-y-1.5">
+                                            {session.flags.map(flag => (
+                                              <li
+                                                key={`${session.id}-${flag}`}
+                                                style={{
+                                                  fontFamily: 'var(--font-body)',
+                                                  fontSize: '0.8125rem',
+                                                  color: 'var(--text-secondary)',
+                                                }}
+                                              >
+                                                {flag}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+
+                                        <div className="mt-3">
+                                          <Link to={`/cdt/result/${session.id}`}>
+                                            <Button size="sm" variant="ghost">Open CDT Result</Button>
+                                          </Link>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+        </div>
+      </main>
+
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.48)', zIndex: 60 }}
+        >
+          <form
+            className="w-full max-w-md rounded-xl p-6"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-light)',
+              boxShadow: 'var(--shadow-elevated)',
+            }}
+            onSubmit={handleCreatePatient}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="label-mono">Create Patient</p>
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                aria-label="Close create patient modal"
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="label-mono mb-1 block">Full Name</label>
+                <input
+                  type="text"
+                  value={newPatientForm.name}
+                  onChange={(event) => updateFormField('name', event.target.value)}
+                  placeholder="Enter patient name"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Age</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={newPatientForm.age}
+                    onChange={(event) => updateFormField('age', event.target.value)}
+                    placeholder="Age"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Gender</label>
+                  <select
+                    value={newPatientForm.gender}
+                    onChange={(event) => updateFormField('gender', event.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Phone (optional)</label>
+                <input
+                  type="text"
+                  value={newPatientForm.phone}
+                  onChange={(event) => updateFormField('phone', event.target.value)}
+                  placeholder="Phone number"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Notes (optional)</label>
+                <textarea
+                  value={newPatientForm.notes}
+                  onChange={(event) => updateFormField('notes', event.target.value)}
+                  placeholder="Clinical notes"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+            </div>
+
+            {createError && (
+              <p
+                className="mt-3"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '0.8125rem',
+                  color: 'var(--risk-critical)',
+                }}
+              >
+                {createError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={closeCreateModal}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" loading={creatingPatient}>
+                Create Patient
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <Footer />
+    </div>
+  )
+}

@@ -42,7 +42,7 @@ export function Footer() {
             letterSpacing: '0.08em',
           }}
         >
-          CDT MODULE · VISUOSPATIAL · SEM VI CAPSTONE 2025–26
+          SPEECH + CDT MODULES · COGNITIVE SCREENING · SEM VI CAPSTONE 2025–26
         </p>
 
         <p

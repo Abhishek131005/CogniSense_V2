@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Busy market scene</title>
+  <desc id="desc">Several people are buying and selling items at colorful market stalls.</desc>
+  <rect width="960" height="560" fill="#ece3d5"/>
+  <rect y="280" width="960" height="280" fill="#d8cfbe"/>
+  <rect x="80" y="150" width="250" height="140" rx="12" fill="#9b6c49"/>
+  <rect x="104" y="172" width="202" height="95" fill="#e7d7bc"/>
+  <rect x="360" y="164" width="250" height="126" rx="12" fill="#6f8fae"/>
+  <rect x="384" y="182" width="202" height="84" fill="#dce4ec"/>
+  <rect x="640" y="168" width="240" height="122" rx="12" fill="#7c905d"/>
+  <rect x="664" y="184" width="192" height="80" fill="#e3e8d9"/>
+  <ellipse cx="170" cy="238" rx="18" ry="10" fill="#e08a4f"/>
+  <ellipse cx="208" cy="236" rx="16" ry="10" fill="#79aa58"/>
+  <ellipse cx="246" cy="236" rx="16" ry="10" fill="#f0c95d"/>
+  <rect x="430" y="236" width="40" height="22" rx="5" fill="#b26b4b"/>
+  <circle cx="482" cy="246" r="12" fill="#8ec0d8"/>
+  <circle cx="170" cy="350" r="15" fill="#f2c8a6"/>
+  <path d="M158 340q12-14 24 0" fill="#3a2d29"/>
+  <rect x="146" y="368" width="50" height="82" rx="12" fill="#c47a3a"/>
+  <line x1="158" y1="450" x2="152" y2="490" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="184" y1="450" x2="190" y2="490" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="290" cy="360" r="15" fill="#f2c8a6"/>
+  <path d="M278 350q12-14 24 0" fill="#3a2d29"/>
+  <rect x="266" y="378" width="50" height="82" rx="12" fill="#5c8f68"/>
+  <line x1="278" y1="460" x2="272" y2="500" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="304" y1="460" x2="310" y2="500" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="500" cy="364" r="15" fill="#f2c8a6"/>
+  <path d="M488 354q12-14 24 0" fill="#3a2d29"/>
+  <rect x="476" y="382" width="50" height="82" rx="12" fill="#4f7db0"/>
+  <line x1="488" y1="464" x2="482" y2="504" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="514" y1="464" x2="520" y2="504" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="526" y1="402" x2="578" y2="384" stroke="#4b4f54" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="720" cy="368" r="15" fill="#f2c8a6"/>
+  <path d="M708 358q12-14 24 0" fill="#3a2d29"/>
+  <rect x="696" y="386" width="50" height="82" rx="12" fill="#b2664a"/>
+  <line x1="708" y1="468" x2="702" y2="506" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+  <line x1="734" y1="468" x2="740" y2="506" stroke="#3d4247" stroke-width="7" stroke-linecap="round"/>
+</svg>

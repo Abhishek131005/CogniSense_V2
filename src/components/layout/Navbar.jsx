@@ -6,7 +6,7 @@
  */
 
 import { Link, NavLink } from 'react-router-dom'
-import { PenLine } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 
 const navLinks = [
   { to: '/',          label: 'Home'    },
@@ -15,7 +15,7 @@ const navLinks = [
   { to: '/profile',   label: 'Profile' },
 ]
 
-export function Navbar({ minimal = false, sessionBadge = false }) {
+export function Navbar({ minimal = false, sessionBadge = false, hideCta = false }) {
   return (
     <nav
       className="sticky top-0 z-40 w-full"
@@ -31,7 +31,7 @@ export function Navbar({ minimal = false, sessionBadge = false }) {
 
         {/* Logo */}
         <Link
-          to="/cdt"
+          to="/"
           className="flex items-center gap-2 no-underline"
           aria-label="CogniSense home"
         >
@@ -105,9 +105,9 @@ export function Navbar({ minimal = false, sessionBadge = false }) {
         )}
 
         {/* Right — CTA */}
-        {!minimal && (
+        {!minimal && !hideCta && (
           <Link
-            to="/cdt"
+            to="/profile?new=1"
             className="hidden md:inline-flex items-center gap-1.5 no-underline"
             style={{
               background: 'var(--text-primary)',
@@ -122,8 +122,8 @@ export function Navbar({ minimal = false, sessionBadge = false }) {
             onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
             onMouseLeave={e => e.currentTarget.style.opacity = '1'}
           >
-            <PenLine size={14} />
-            New Screening
+            <UserPlus size={14} />
+            Add Patient
           </Link>
         )}
       </div>
