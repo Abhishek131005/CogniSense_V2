@@ -6,7 +6,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect } from 'react'
-import { getPatients } from '../services/firestore'
+import { addPatient, deletePatientById, getPatients } from '../services/firestore'
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
@@ -32,6 +32,28 @@ function appReducer(state, action) {
 
     case 'CLEAR_CURRENT_PATIENT':
       return { ...state, currentPatient: null }
+
+    case 'ADD_PATIENT': {
+      const updatedPatients = [
+        action.payload,
+        ...state.patients.filter(p => p.id !== action.payload.id),
+      ]
+      return {
+        ...state,
+        patients: updatedPatients,
+        currentPatient: action.payload,
+      }
+    }
+
+    case 'REMOVE_PATIENT': {
+      const filtered = state.patients.filter(p => p.id !== action.payload)
+      const shouldClearCurrent = state.currentPatient?.id === action.payload
+      return {
+        ...state,
+        patients: filtered,
+        currentPatient: shouldClearCurrent ? null : state.currentPatient,
+      }
+    }
 
     default:
       return state
@@ -73,10 +95,23 @@ export function AppProvider({ children }) {
     dispatch({ type: 'CLEAR_CURRENT_PATIENT' })
   }
 
+  const addNewPatient = async (patientInput) => {
+    const created = await addPatient(patientInput)
+    dispatch({ type: 'ADD_PATIENT', payload: created })
+    return created
+  }
+
+  const removePatient = async (patientId) => {
+    await deletePatientById(patientId)
+    dispatch({ type: 'REMOVE_PATIENT', payload: patientId })
+  }
+
   const value = {
     ...state,
     setCurrentPatient,
     clearCurrentPatient,
+    addNewPatient,
+    removePatient,
   }
 
   return (
