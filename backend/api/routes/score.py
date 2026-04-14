@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException
 
 from utils.response_models import ScoringRequest, ScoringResponse
 from utils.image_utils     import base64_to_pil
-from services.score_fusion import run_full_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -39,6 +38,8 @@ async def score_cdt(request: ScoringRequest) -> ScoringResponse:
         raise HTTPException(status_code=422, detail=f"Invalid imageBase64: {e}")
 
     try:
+        from services.score_fusion import run_full_pipeline
+
         dynamic = request.features.model_dump()
         result  = run_full_pipeline(img, dynamic)
         return result

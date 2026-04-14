@@ -126,8 +126,14 @@ function normalizeAssessmentRecord(record, fallback = {}) {
     ? 'speech'
     : record?.type === 'cdt'
       ? 'cdt'
+      : record?.type === 'oculomotor'
+        ? 'oculomotor'
       : record?.speech
         ? 'speech'
+        : record?.oculomotor
+          ? 'oculomotor'
+          : record?.oculomotorRiskScore !== undefined && record?.oculomotorRiskScore !== null
+            ? 'oculomotor'
         : 'cdt'
 
   const submitTimestamp = toNullableDate(record?.submitTimestamp)
@@ -140,6 +146,7 @@ function normalizeAssessmentRecord(record, fallback = {}) {
 
   const speechRiskScore = toFiniteNumber(record?.speechRiskScore, null)
   const cdtRiskScore = toFiniteNumber(record?.cdtRiskScore, null)
+  const oculomotorRiskScore = toFiniteNumber(record?.oculomotorRiskScore, null)
 
   return {
     ...record,
@@ -157,6 +164,7 @@ function normalizeAssessmentRecord(record, fallback = {}) {
     flags: Array.isArray(record?.flags) ? record.flags : [],
     recommendation: typeof record?.recommendation === 'string' ? record.recommendation : '',
     speech: record?.speech && typeof record.speech === 'object' ? record.speech : null,
+    oculomotor: record?.oculomotor && typeof record.oculomotor === 'object' ? record.oculomotor : null,
     speechRiskScore:
       speechRiskScore ?? toFiniteNumber(record?.speech?.risk_score, inferredType === 'speech' ? 0 : null),
     speechRiskClass:
@@ -166,6 +174,8 @@ function normalizeAssessmentRecord(record, fallback = {}) {
           ? record.speech.risk_class
           : null,
     cdtRiskScore,
+    oculomotorRiskScore:
+      oculomotorRiskScore ?? toFiniteNumber(record?.oculomotor?.risk_score, inferredType === 'oculomotor' ? 0 : null),
     riskLabel: typeof record?.riskLabel === 'string' ? record.riskLabel : null,
     features: record?.features && typeof record.features === 'object' ? record.features : {},
     audioFileName: typeof record?.audioFileName === 'string' ? record.audioFileName : null,

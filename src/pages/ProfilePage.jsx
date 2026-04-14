@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ClipboardList, Mic, PenLine, Trash2, UserPlus, UserRound, X } from 'lucide-react'
+import { ClipboardList, Eye, Mic, PenLine, Trash2, UserPlus, UserRound, X } from 'lucide-react'
 
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
@@ -104,6 +104,22 @@ function toSessionEntry(assessment) {
       classLabel,
       flags: speech.interpretation?.key_flags || assessment.flags || [],
       speech,
+      raw: assessment,
+    }
+  }
+
+  if (assessment.type === 'oculomotor') {
+    const oculomotor = assessment.oculomotor || {}
+    const score = Number(assessment.oculomotorRiskScore ?? assessment.riskScore ?? 0)
+
+    return {
+      id: assessment.id,
+      type: 'oculomotor',
+      date: timestamp,
+      score,
+      classLabel: assessment.riskLabel || 'Unknown',
+      flags: assessment.flags || [],
+      oculomotor,
       raw: assessment,
     }
   }
@@ -397,7 +413,11 @@ export default function ProfilePage() {
     [sessions],
   )
   const cdtCount = useMemo(
-    () => sessions.filter((session) => session.type !== 'speech').length,
+    () => sessions.filter((session) => session.type === 'cdt').length,
+    [sessions],
+  )
+  const oculomotorCount = useMemo(
+    () => sessions.filter((session) => session.type === 'oculomotor').length,
     [sessions],
   )
 
@@ -532,7 +552,7 @@ export default function ProfilePage() {
                     color: 'var(--text-secondary)',
                   }}
                 >
-                  Review patient trends across speech and clock drawing sessions, including Brain Velocity.
+                  Review patient trends across speech, clock drawing, and oculomotor sessions, including Brain Velocity.
                 </p>
               </div>
               <Button
@@ -695,7 +715,7 @@ export default function ProfilePage() {
                         <p className="label-mono">Sessions</p>
                         <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem' }}>{sessions.length}</p>
                         <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {speechCount} Speech · {cdtCount} CDT
+                          {speechCount} Speech · {cdtCount} CDT · {oculomotorCount} Oculomotor
                         </p>
                       </div>
 
@@ -749,6 +769,9 @@ export default function ProfilePage() {
                       </Link>
                       <Link to="/speech">
                         <Button variant="accent" size="sm" icon={<Mic size={14} />}>New Speech Assessment</Button>
+                      </Link>
+                      <Link to="/oculomotor">
+                        <Button variant="ghost" size="sm" icon={<Eye size={14} />}>New Oculomotor Assessment</Button>
                       </Link>
                       <Button
                         variant="danger"
@@ -1114,6 +1137,99 @@ export default function ProfilePage() {
                                         )}
                                       </div>
                                     </div>
+                                  ) : session.type === 'oculomotor' ? (
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">Oculomotor Metrics</p>
+                                        <DetailRow
+                                          label="Trial Count"
+                                          value={`${session.oculomotor?.trial_count ?? '--'}`}
+                                        />
+                                        <DetailRow
+                                          label="Antisaccade Errors"
+                                          value={`${session.oculomotor?.antisaccade_errors ?? '--'}`}
+                                        />
+                                        <DetailRow
+                                          label="Error Rate"
+                                          value={`${Number(session.oculomotor?.error_rate_percent || 0).toFixed(2)}%`}
+                                        />
+                                        <DetailRow
+                                          label="Avg Latency"
+                                          value={`${Number(session.oculomotor?.avg_latency_ms || 0).toFixed(1)} ms`}
+                                        />
+                                        <DetailRow
+                                          label="Fixation RMSD"
+                                          value={`${Number(session.oculomotor?.fixation_rmsd || 0).toFixed(4)}`}
+                                        />
+                                        <DetailRow
+                                          label="Pursuit Gain"
+                                          value={
+                                            session.oculomotor?.pursuit_gain == null
+                                              ? 'N/A'
+                                              : Number(session.oculomotor?.pursuit_gain).toFixed(3)
+                                          }
+                                        />
+                                      </div>
+
+                                      <div
+                                        className="rounded-lg p-3"
+                                        style={{
+                                          border: '1px solid var(--border-light)',
+                                          background: 'var(--bg-surface)',
+                                        }}
+                                      >
+                                        <p className="label-mono mb-2">Oculomotor Risk Detail</p>
+                                        <DetailRow
+                                          label="Risk Score"
+                                          value={`${Math.round(Number(session.score || 0))}`}
+                                        />
+                                        <DetailRow
+                                          label="Risk Label"
+                                          value={session.classLabel}
+                                        />
+                                        <DetailRow
+                                          label="Clinical Risk"
+                                          value={session.oculomotor?.clinical_risk || 'Unknown'}
+                                        />
+
+                                        {session.flags.length > 0 && (
+                                          <ul className="mt-2 space-y-1.5">
+                                            {session.flags.map(flag => (
+                                              <li
+                                                key={`${session.id}-${flag}`}
+                                                style={{
+                                                  fontFamily: 'var(--font-body)',
+                                                  fontSize: '0.8125rem',
+                                                  color: 'var(--text-secondary)',
+                                                }}
+                                              >
+                                                {flag}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+
+                                        {session.raw?.recommendation && (
+                                          <p
+                                            className="mt-3"
+                                            style={{
+                                              fontFamily: 'var(--font-body)',
+                                              fontSize: '0.8125rem',
+                                              color: 'var(--text-secondary)',
+                                              lineHeight: 1.5,
+                                            }}
+                                          >
+                                            {session.raw.recommendation}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
                                   ) : (
                                     <div className="grid md:grid-cols-2 gap-4">
                                       <div
@@ -1134,7 +1250,7 @@ export default function ProfilePage() {
                                         />
                                         <DetailRow
                                           label="Mean Velocity"
-                                          value={`${Number(session.features?.meanVelocity || 0).toFixed(2)}`}
+                                          value={`${Number(session.features?.meanStrokeVelocity ?? session.features?.meanVelocity ?? 0).toFixed(2)}`}
                                         />
                                         <DetailRow
                                           label="Pause Count"
@@ -1142,7 +1258,10 @@ export default function ProfilePage() {
                                         />
                                         <DetailRow
                                           label="Total Duration"
-                                          value={`${Math.round(Number(session.features?.totalDurationSec || 0))} sec`}
+                                          value={`${Math.round(Number(
+                                            session.features?.totalDurationSec
+                                              ?? ((session.features?.totalDurationMs || 0) / 1000)
+                                          ))} sec`}
                                         />
                                       </div>
 

@@ -12,12 +12,13 @@ import CDTLandingPage from './pages/CDTLandingPage'
 import DrawingPage from './pages/DrawingPage'
 import ResultPage from './pages/ResultPage'
 import SpeechPage from './pages/SpeechPage'
+import OculomotorPage from './pages/OculomotorPage'
 import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<HomePage />} />
 
@@ -28,6 +29,7 @@ export default function App() {
 
           {/* Speech + Profile routes */}
           <Route path="/speech"  element={<SpeechPage />} />
+          <Route path="/oculomotor" element={<OculomotorPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
           {/* 404 */}

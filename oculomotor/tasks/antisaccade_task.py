@@ -47,6 +47,54 @@ class AntisaccadeTask:
         self._ui         = UIRenderer()
         self._cap        = None
 
+    @staticmethod
+    def _open_camera() -> cv2.VideoCapture:
+        """Open webcam with Windows-friendly backend fallbacks."""
+        attempts: list[tuple[str, cv2.VideoCapture]] = []
+
+        if hasattr(cv2, "CAP_DSHOW"):
+            attempts.append(("CAP_DSHOW", cv2.VideoCapture(0, cv2.CAP_DSHOW)))
+        if hasattr(cv2, "CAP_MSMF"):
+            attempts.append(("CAP_MSMF", cv2.VideoCapture(0, cv2.CAP_MSMF)))
+        attempts.append(("DEFAULT", cv2.VideoCapture(0)))
+
+        fallback: cv2.VideoCapture | None = None
+
+        for backend_name, cap in attempts:
+            if not cap.isOpened():
+                cap.release()
+                continue
+
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+
+            got_frame = False
+            has_visual_signal = False
+            for _ in range(20):
+                ret, frame = cap.read()
+                if not ret or frame is None or frame.size == 0:
+                    continue
+                got_frame = True
+                if float(np.var(frame)) > 2.0:
+                    has_visual_signal = True
+                    break
+
+            if has_visual_signal:
+                print(f"[INFO] Camera opened with backend: {backend_name}")
+                return cap
+
+            if got_frame and fallback is None:
+                fallback = cap
+            else:
+                cap.release()
+
+        if fallback is not None:
+            print("[WARN] Camera feed appears very dark/flat. Continuing with fallback camera backend.")
+            return fallback
+
+        raise RuntimeError("Cannot open webcam (device 0).")
+
     # ── internal helpers ──────────────────────────────────────────────────
     def _read_gaze(self, frame: np.ndarray, t: float,
                    trial_id: int, phase: str,
@@ -72,7 +120,7 @@ class AntisaccadeTask:
     # ── calibration phase ─────────────────────────────────────────────────
     def run_calibration(self, cap):
         """Show a central dot for CALIBRATION_DURATION_S and collect baseline."""
-        print("[INFO] Starting calibration…")
+        print("[INFO] Starting calibration...")
         end = time.time() + CALIBRATION_DURATION_S
         while time.time() < end:
             ret, frame = cap.read()
@@ -85,17 +133,22 @@ class AntisaccadeTask:
             cv2.circle(canvas, (w // 2, h // 2), 25, (255, 255, 255), -1)
             remaining = max(0, end - time.time())
             self._ui.status_bar(canvas,
-                f"CALIBRATION — Look at the white dot  [{remaining:.1f}s]",
+                f"CALIBRATION - Look at the white dot  [{remaining:.1f}s]",
                 colour=COL_TEXT)
-            cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
-            cv2.waitKey(1)
 
             t  = time.time()
             lm = self.tracker.process_frame(frame)
+            self._ui.camera_preview(canvas, frame, lm is not None)
+            if lm is None:
+                self._ui.status_bar(canvas,
+                    "Face not detected - center your face in preview", COL_WARN, 0.95)
             if lm:
                 nx, ny, _, _ = FaceMeshTracker.extract_gaze(
                     lm, frame.shape[1], frame.shape[0])
                 self.cal.add_sample(nx, ny)
+
+            cv2.imshow("CogniSense - Oculomotor Assessment", canvas)
+            cv2.waitKey(1)
         self.cal.finalise()
         self.cal.save()
         print(f"[INFO] Calibration done. Baseline: x={self.cal.baseline_x:.4f}  "
@@ -117,6 +170,7 @@ class AntisaccadeTask:
             ret, frame = cap.read()
             if not ret:
                 continue
+            frame = cv2.flip(frame, 1)
             h, w  = frame.shape[:2]
             canvas = self._ui.blank(w, h)
             y0    = h // 2 - len(lines) * 28 // 2
@@ -128,7 +182,12 @@ class AntisaccadeTask:
                 cx_   = (w - cv2.getTextSize(line, FONT, sz, thick)[0][0]) // 2
                 cv2.putText(canvas, line, (cx_, y0 + i * 35),
                             FONT, sz, col, thick, cv2.LINE_AA)
-            cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
+            lm = self.tracker.process_frame(frame)
+            self._ui.camera_preview(canvas, frame, lm is not None)
+            if lm is None:
+                self._ui.status_bar(canvas,
+                    "Face not detected - center your face before starting", COL_WARN, 0.94)
+            cv2.imshow("CogniSense - Oculomotor Assessment", canvas)
             key = cv2.waitKey(30)
             if key == 32:   # SPACE
                 break
@@ -160,14 +219,15 @@ class AntisaccadeTask:
             t   = time.time()
             gp  = self._read_gaze(frame, t, trial_id, "fixation", "none")
             fixation_pts.append(gp)
+            self._ui.camera_preview(canvas, frame, gp.face_detected)
             if gp.face_detected and not math.isnan(gp.norm_x):
                 self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y)
             if not gp.face_detected:
                 lost_face_count += 1
                 self._ui.status_bar(canvas,
-                    "⚠ Face not detected — look at camera", COL_WARN, 0.95)
+                    "Face not detected - align face in preview", COL_WARN, 0.95)
 
-            cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
+            cv2.imshow("CogniSense - Oculomotor Assessment", canvas)
             cv2.waitKey(1)
 
         # ── Phase 2: Stimulus ─────────────────────────────────────────────
@@ -196,10 +256,14 @@ class AntisaccadeTask:
             t   = time.time()
             gp  = self._read_gaze(frame, t, trial_id, "stimulus", side)
             stim_pts.append(gp)
+            self._ui.camera_preview(canvas, frame, gp.face_detected)
             if gp.face_detected and not math.isnan(gp.norm_x):
                 self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y)
+            if not gp.face_detected:
+                self._ui.status_bar(canvas,
+                    "Face not detected - align face in preview", COL_WARN, 0.95)
 
-            cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
+            cv2.imshow("CogniSense - Oculomotor Assessment", canvas)
             cv2.waitKey(1)
 
         # ── Merge all points ──────────────────────────────────────────────
@@ -233,16 +297,11 @@ class AntisaccadeTask:
 
     # ── main entry point ──────────────────────────────────────────────────
     def run(self):
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            raise RuntimeError("Cannot open webcam (device 0).")
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        cap.set(cv2.CAP_PROP_FPS,          30)
+        cap = self._open_camera()
 
-        cv2.namedWindow("CogniSense — Oculomotor Assessment",
+        cv2.namedWindow("CogniSense - Oculomotor Assessment",
                         cv2.WINDOW_NORMAL)
-        cv2.setWindowProperty("CogniSense — Oculomotor Assessment",
+        cv2.setWindowProperty("CogniSense - Oculomotor Assessment",
                               cv2.WND_PROP_FULLSCREEN,
                               cv2.WINDOW_FULLSCREEN)
 
@@ -256,7 +315,7 @@ class AntisaccadeTask:
             random.shuffle(sides)
             self.trial_sides = sides
 
-            print("\n[INFO] Beginning antisaccade task…\n")
+            print("\n[INFO] Beginning antisaccade task...\n")
             for tid, side in enumerate(sides, start=1):
                 result = self._run_trial(cap, tid, side)
                 self.trial_results.append(result)
