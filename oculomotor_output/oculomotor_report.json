@@ -1,0 +1,10 @@
+{
+  "n_trials": 20,
+  "n_errors": 7,
+  "error_rate": "35.0%",
+  "avg_latency_ms": "92.9",
+  "stability_score": "0.0555",
+  "pursuit_gain": "0.367",
+  "clinical_risk": "Medium",
+  "timestamp_utc": "2026-04-14T17:36:02Z"
+}

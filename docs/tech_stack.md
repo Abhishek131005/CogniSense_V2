@@ -1,11 +1,11 @@
-# CogniSense — CDT Module Tech Stack
+# CogniSense — Unified Module Tech Stack
 ## tech_stack.md | Version 1.0
 
 ---
 
 ## Overview
 
-The CDT Module is a **React + Vite** web application consistent with the Speech Module's architecture. It shares Firebase project, Firestore collections, and Firebase Storage bucket. The stack is chosen for rapid development, real-time data sync, and mobile-first performance.
+CogniSense is a **React + Vite + FastAPI** multimodal screening platform. It unifies Speech, Clock Drawing Test (CDT), and Oculomotor modules in one frontend, one backend API, and one patient timeline store.
 
 ---
 
@@ -17,7 +17,7 @@ The CDT Module is a **React + Vite** web application consistent with the Speech 
 |---|---|---|
 | **React** | 18.x | UI component framework |
 | **Vite** | 5.x | Build tool & dev server (HMR, fast cold starts) |
-| **React Router v6** | 6.x | Client-side routing (`/cdt`, `/cdt/draw`, `/cdt/result/:id`) |
+| **React Router v6** | 6.x | Client-side routing (`/speech`, `/cdt`, `/oculomotor`, `/profile`) |
 
 ### Styling
 
@@ -133,7 +133,7 @@ SessionContext (drawing page only)
 | Service | Usage |
 |---|---|
 | **Firebase Authentication** | Google Sign-In for GP users. Auth state gates all Firestore access. Shared with Speech Module. |
-| **Cloud Firestore** | Primary database. Stores patients, assessments (CDT + speech), session metadata. Real-time listeners for Brain Velocity updates. |
+| **Cloud Firestore** | Primary database. Stores patients, assessments (CDT + speech + oculomotor), session metadata. Real-time listeners for Brain Velocity updates. |
 | **Firebase Storage** | Stores CDT drawing images. Path: `assessments/{patientId}/{assessmentId}/cdt_image.png` |
 | **Firebase Hosting** | Static hosting for the built Vite app |
 
@@ -141,14 +141,26 @@ SessionContext (drawing page only)
 
 ```
 /patients/{patientId}
-  /assessments/{assessmentId}     ← CDT + Speech assessments (type field differentiates)
+  /assessments/{assessmentId}     ← CDT + Speech + Oculomotor assessments (type field differentiates)
 ```
 
 > Reuse the exact collection structure established by the Speech Module. Do NOT create separate CDT-specific collections.
 
-### ML Scoring (Mock / Future)
+### Unified Inference (Mock + FastAPI)
 
-For Sem VI capstone scope, the ML scoring is **mocked client-side**:
+The frontend can run in two modes:
+1. Mock fallback scoring in client services when backend is unavailable.
+2. Unified FastAPI backend inference when `VITE_ML_API_URL` is configured.
+
+Active backend endpoints:
+
+- `POST /api/score/cdt`
+- `POST /api/speech/analyze`
+- `POST /api/oculomotor/analyze`
+- `POST /api/oculomotor/analyze/demo`
+- `GET /api/oculomotor/report/latest`
+
+Mock example (CDT):
 
 ```js
 // src/services/scoring.js
@@ -215,14 +227,20 @@ cognisense-cdt/
 │   │   ├── useFirestore.js         ← CRUD operations wrapper
 │   │   └── useCanvasExport.js      ← Canvas to PNG/base64
 │   ├── pages/
+│   │   ├── HomePage.jsx            ← /
+│   │   ├── SpeechPage.jsx          ← /speech
 │   │   ├── CDTLandingPage.jsx      ← /cdt
 │   │   ├── DrawingPage.jsx         ← /cdt/draw
-│   │   └── ResultPage.jsx          ← /cdt/result/:assessmentId
+│   │   ├── ResultPage.jsx          ← /cdt/result/:assessmentId
+│   │   ├── OculomotorPage.jsx      ← /oculomotor
+│   │   └── ProfilePage.jsx         ← /profile
 │   ├── services/
 │   │   ├── firebase.js             ← Firebase initialization (shared config)
 │   │   ├── firestore.js            ← Firestore read/write functions
 │   │   ├── storage.js              ← Firebase Storage upload
-│   │   └── scoring.js              ← Mock scoring + future FastAPI bridge
+│   │   ├── scoring.js              ← CDT scoring client (mock + FastAPI)
+│   │   ├── speech.js               ← Speech API client
+│   │   └── oculomotor.js           ← Oculomotor API client
 │   ├── styles/
 │   │   ├── index.css               ← :root CSS variables, global resets
 │   │   └── canvas.css              ← Canvas-specific styles
@@ -285,6 +303,10 @@ VITE_FIREBASE_APP_ID=
 
 # Optional: FastAPI ML endpoint (leave empty to use mock)
 VITE_ML_API_URL=
+
+# Optional backend ASR/oculomotor runtime knobs
+COGNISENSE_ENABLE_ASR=true
+COGNISENSE_ASR_MODEL=openai/whisper-medium
 ```
 
 > Use the **same Firebase project** as the Speech Module. Get these values from your teammate.

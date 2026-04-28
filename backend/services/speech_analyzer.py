@@ -14,6 +14,7 @@ import re
 import subprocess
 import wave
 import logging
+import importlib.util
 from collections import Counter
 from dataclasses import dataclass
 from typing import Optional
@@ -42,13 +43,12 @@ try:
 except Exception:
     IMAGEIO_FFMPEG_OK = False
 
-try:
-    import torch
-    from transformers import pipeline
-
-    ASR_OK = True
-except Exception:
-    ASR_OK = False
+torch = None
+pipeline = None
+ASR_OK = (
+    importlib.util.find_spec("torch") is not None
+    and importlib.util.find_spec("transformers") is not None
+)
 
 try:
     from langdetect import detect as detect_language
@@ -135,8 +135,22 @@ class SpeechAnalyzer:
         self._load_asr()
 
     def _load_asr(self) -> None:
+        global torch, pipeline, ASR_OK
+
         if not self.enable_asr or not ASR_OK:
             return
+
+        if torch is None or pipeline is None:
+            try:
+                import torch as _torch
+                from transformers import pipeline as _pipeline
+
+                torch = _torch
+                pipeline = _pipeline
+            except Exception as exc:
+                logger.warning("ASR dependencies unavailable: %s", exc)
+                ASR_OK = False
+                return
 
         device = 0 if torch.cuda.is_available() else -1
         candidates = []

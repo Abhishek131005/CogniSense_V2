@@ -30,12 +30,13 @@ def main():
     5.  Compute and display clinical report (JSON)
     6.  Render matplotlib visualisation
     """
-    print("""
-╔══════════════════════════════════════════════════════════╗
-║      CogniSense — Oculomotor Diagnostic Module           ║
-║      Pre-clinical Alzheimer's Screening Tool             ║
-╚══════════════════════════════════════════════════════════╝
-    """)
+    print(
+        "\n"
+        "+----------------------------------------------------------+\n"
+        "|      CogniSense - Oculomotor Diagnostic Module          |\n"
+        "|      Pre-clinical Alzheimer's Screening Tool            |\n"
+        "+----------------------------------------------------------+\n"
+    )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -44,14 +45,14 @@ def main():
     with FaceMeshTracker() as tracker:
 
         # ── Phase A: Antisaccade ──────────────────────────────────────────
-        print("[INFO] Phase A — Antisaccade Task")
+        print("[INFO] Phase A - Antisaccade Task")
         antisaccade = AntisaccadeTask(tracker, calibration,
                                       n_trials=ANTISACCADE_TRIALS)
         antisaccade.run()
 
         # ── Phase B: Smooth Pursuit (optional) ────────────────────────────
         pursuit_gain = float("nan")
-        print("\n[INFO] Phase B — Smooth Pursuit (press Q in next 3s to skip)")
+        print("\n[INFO] Phase B - Smooth Pursuit (press Q in next 3s to skip)")
         time.sleep(1)
         # Non-blocking check: we just proceed; user can close window if desired
         try:
@@ -64,7 +65,7 @@ def main():
             all_gaze_pts = antisaccade.all_points
 
     # ── Persist raw data ──────────────────────────────────────────────────
-    print("\n[INFO] Saving data artefacts…")
+    print("\n[INFO] Saving data artefacts...")
     DataArchive.save_raw(all_gaze_pts, RAW_CSV)
     DataArchive.save_antisaccade(antisaccade.all_points, ANTISACCADE_CSV)
 
@@ -75,7 +76,7 @@ def main():
     reporter.save_json(report, SUMMARY_JSON)
 
     # ── Visualise ─────────────────────────────────────────────────────────
-    print("\n[INFO] Rendering visualisation…")
+    print("\n[INFO] Rendering visualisation...")
     reporter.plot_gaze_paths(antisaccade.trial_results,
                              antisaccade.all_points, PLOT_PATH)
 

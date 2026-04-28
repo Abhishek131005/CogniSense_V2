@@ -67,3 +67,39 @@ class UIRenderer:
         px = max(radius, min(w - radius, px))
         py = max(radius, min(h - radius, py))
         cv2.circle(canvas, (px, py), radius, (255, 255, 0), -1)
+
+    @staticmethod
+    def camera_preview(
+        canvas: np.ndarray,
+        frame_bgr: np.ndarray,
+        face_detected: bool | None,
+        *,
+        preview_w_frac: float = 0.28,
+        margin: int = 18,
+    ):
+        """Render a live webcam preview in the top-right corner with face status."""
+        h, w = canvas.shape[:2]
+        ph = max(120, int(h * 0.22))
+        pw = max(180, int(w * preview_w_frac))
+
+        preview = cv2.resize(frame_bgr, (pw, ph), interpolation=cv2.INTER_AREA)
+        x1 = max(0, w - pw - margin)
+        y1 = margin
+        x2 = min(w, x1 + pw)
+        y2 = min(h, y1 + ph)
+
+        canvas[y1:y2, x1:x2] = preview[: (y2 - y1), : (x2 - x1)]
+        cv2.rectangle(canvas, (x1 - 2, y1 - 2), (x2 + 2, y2 + 2), (220, 220, 220), 1)
+
+        if face_detected is None:
+            status = "Face: checking..."
+            color = (180, 180, 180)
+        elif face_detected:
+            status = "Face: detected"
+            color = COL_GOOD
+        else:
+            status = "Face: not detected"
+            color = COL_STIMULUS
+
+        label_y = min(h - 8, y2 + 20)
+        cv2.putText(canvas, status, (x1, label_y), FONT, 0.55, color, 2, cv2.LINE_AA)

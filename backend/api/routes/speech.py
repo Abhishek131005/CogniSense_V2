@@ -9,7 +9,6 @@ import tempfile
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from services.speech_analyzer import get_speech_analyzer
 from utils.speech_models import SpeechAnalysisResult
 
 router = APIRouter()
@@ -17,6 +16,8 @@ router = APIRouter()
 
 @router.get("/speech/health")
 def speech_health() -> dict:
+    from services.speech_analyzer import get_speech_analyzer
+
     analyzer = get_speech_analyzer()
     active_model = analyzer.asr_effective_model_id or analyzer.asr_model_id
     return {
@@ -33,6 +34,8 @@ async def analyze_speech(
     file: UploadFile = File(...),
     language: str = Form("auto"),
 ) -> SpeechAnalysisResult:
+    from services.speech_analyzer import get_speech_analyzer
+
     analyzer = get_speech_analyzer()
 
     suffix = os.path.splitext(file.filename or "sample.wav")[-1] or ".wav"
@@ -52,5 +55,7 @@ async def analyze_speech(
 
 @router.post("/speech/analyze/demo", response_model=SpeechAnalysisResult)
 def analyze_demo() -> SpeechAnalysisResult:
+    from services.speech_analyzer import get_speech_analyzer
+
     analyzer = get_speech_analyzer()
     return analyzer.generate_demo_result()

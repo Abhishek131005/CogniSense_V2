@@ -12,6 +12,7 @@ const navLinks = [
   { to: '/',          label: 'Home'    },
   { to: '/speech',    label: 'Speech'  },
   { to: '/cdt',       label: 'CDT'     },
+  { to: '/oculomotor', label: 'Oculomotor' },
   { to: '/profile',   label: 'Profile' },
 ]
 

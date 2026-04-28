@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 from api.routes.score import router as score_router
 from api.routes.speech import router as speech_router
-from services.cnn_scorer import get_cnn_scorer
+from api.routes.oculomotor import router as oculomotor_router
 
 BACKEND_DIR = Path(__file__).resolve().parent
 COGNISENSE_DIR = BACKEND_DIR.parent
@@ -44,9 +44,7 @@ logger = logging.getLogger(__name__)
 # ── Lifespan: load heavy models once at startup ───────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting CogniSense Unified API — loading CDT model...")
-    get_cnn_scorer()   # warms up the singleton
-    logger.info("CNN scorer ready.")
+    logger.info("Starting CogniSense Unified API...")
     yield
     logger.info("Shutting down CogniSense Unified API.")
 
@@ -54,8 +52,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CogniSense Unified Screening API",
     description=(
-        "Unified API for CogniSense modules: Clock Drawing Test (CDT) and "
-        "Speech biomarker analysis for pre-clinical Alzheimer's screening."
+        "Unified API for CogniSense modules: Clock Drawing Test (CDT), "
+        "Speech biomarkers, and Oculomotor assessment for pre-clinical "
+        "Alzheimer's screening."
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -67,6 +66,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
+    "http://localhost:5176",
     "https://cognisense-92c8b.web.app",   # update with your Firebase Hosting URL
     "https://cognisense-92c8b.firebaseapp.com",
 ]
@@ -74,6 +74,7 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1):(\d+)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +83,7 @@ app.add_middleware(
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(score_router, prefix="/api")
 app.include_router(speech_router, prefix="/api")
+app.include_router(oculomotor_router, prefix="/api")
 
 
 @app.get("/")
@@ -89,7 +91,7 @@ async def root():
     """Root endpoint — friendly welcome message."""
     return {
         "message": "CogniSense API is running.",
-        "modules": ["cdt", "speech"],
+        "modules": ["cdt", "speech", "oculomotor"],
     }
 
 @app.get("/health")

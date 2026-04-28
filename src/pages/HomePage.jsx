@@ -58,13 +58,13 @@ const STEPS = [
   },
   {
     num: '02',
-    title: 'Speech + CDT Capture',
-    desc: 'Record a speech sample and run clock drawing in the same system.',
+    title: 'Speech + CDT + Eye Tracking',
+    desc: 'Capture speech, clock drawing, and oculomotor metrics in one session.',
   },
   {
     num: '03',
     title: 'Feature Extraction',
-    desc: 'Acoustic, lexical, and drawing dynamics are computed in seconds.',
+    desc: 'Acoustic, lexical, drawing, and gaze-control biomarkers are computed in seconds.',
   },
   {
     num: '04',
@@ -204,7 +204,7 @@ export default function HomePage() {
                   }}
                 >
                   CogniSense
-                  <span style={{ color: 'var(--accent-light)', fontStyle: 'italic' }}> Speech + CDT</span>
+                  <span style={{ color: 'var(--accent-light)', fontStyle: 'italic' }}> Speech + CDT + Oculomotor</span>
                 </h1>
 
                 <p
@@ -217,7 +217,7 @@ export default function HomePage() {
                     lineHeight: 1.65,
                   }}
                 >
-                  Combined speech biomarkers and clock drawing assessment for early cognitive risk detection,
+                  Combined speech biomarkers, clock drawing assessment, and oculomotor tracking for early cognitive risk detection,
                   longitudinal tracking, and practical GP-ready interpretation.
                 </p>
 
@@ -275,6 +275,24 @@ export default function HomePage() {
                       Open Patient Profiles
                     </button>
                   </Link>
+
+                  <Link to="/oculomotor">
+                    <button
+                      type="button"
+                      style={{
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 'var(--radius-pill)',
+                        padding: '10px 18px',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        background: 'transparent',
+                        color: 'var(--text-on-dark)',
+                      }}
+                    >
+                      Open Oculomotor Module
+                    </button>
+                  </Link>
                 </div>
               </div>
 
@@ -310,6 +328,16 @@ export default function HomePage() {
 
                   <div>
                     <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--text-on-dark)' }}>Oculomotor Pipeline</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#6DA5C0' }}>81%</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill" data-bar-target="81%" style={{ background: '#6DA5C0' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
                       <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--text-on-dark)' }}>Fusion Risk Model</span>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--risk-high)' }}>90%</span>
                     </div>
@@ -324,7 +352,7 @@ export default function HomePage() {
                     className="rounded-lg p-3"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
                   >
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: 'var(--text-on-dark)' }}>2</p>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: 'var(--text-on-dark)' }}>3</p>
                     <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.08em', color: 'var(--text-on-dark-muted)' }}>
                       MODALITIES
                     </p>
@@ -334,7 +362,7 @@ export default function HomePage() {
                     className="rounded-lg p-3"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
                   >
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: 'var(--text-on-dark)' }}>30s</p>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: 'var(--text-on-dark)' }}>45s</p>
                     <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.08em', color: 'var(--text-on-dark-muted)' }}>
                       TYPICAL TURNAROUND
                     </p>
