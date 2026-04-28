@@ -321,6 +321,42 @@ function DetailRow({ label, value }) {
   )
 }
 
+function DetailBlock({ label, value }) {
+  return (
+    <div
+      style={{
+        padding: '6px 0',
+        borderBottom: '1px dashed rgba(0,0,0,0.06)',
+      }}
+    >
+      <p
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: '0.8125rem',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: '0.8125rem',
+          color: 'var(--text-primary)',
+          marginTop: 2,
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== ''
+}
+
 export default function ProfilePage() {
   const {
     patients,
@@ -330,6 +366,7 @@ export default function ProfilePage() {
     patientsError,
     addNewPatient,
     removePatient,
+    updatePatientProfile,
   } = useApp()
 
   const location = useLocation()
@@ -345,13 +382,64 @@ export default function ProfilePage() {
   const [creatingPatient, setCreatingPatient] = useState(false)
   const [deletingPatient, setDeletingPatient] = useState(false)
   const [createError, setCreateError] = useState(null)
-  const [newPatientForm, setNewPatientForm] = useState({
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingPatient, setEditingPatient] = useState(false)
+  const [editError, setEditError] = useState(null)
+
+  const createEmptyPatientForm = () => ({
     name: '',
     age: '',
     gender: 'Female',
     phone: '',
+    email: '',
+    address: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    primaryPhysician: '',
+    insuranceProvider: '',
+    insurancePolicyNumber: '',
+    heightCm: '',
+    weightKg: '',
+    bloodType: '',
+    allergies: '',
+    medications: '',
+    pastMedicalHistory: '',
+    surgicalHistory: '',
+    familyHistory: '',
+    socialHistory: '',
+    currentSymptoms: '',
+    diagnosis: '',
     notes: '',
   })
+
+  const buildPatientFormFromRecord = (patient) => ({
+    name: patient?.name || '',
+    age: patient?.age ?? '',
+    gender: patient?.gender || 'Other',
+    phone: patient?.phone || '',
+    email: patient?.email || '',
+    address: patient?.address || '',
+    emergencyContactName: patient?.emergencyContactName || '',
+    emergencyContactPhone: patient?.emergencyContactPhone || '',
+    primaryPhysician: patient?.primaryPhysician || '',
+    insuranceProvider: patient?.insuranceProvider || '',
+    insurancePolicyNumber: patient?.insurancePolicyNumber || '',
+    heightCm: patient?.heightCm ?? '',
+    weightKg: patient?.weightKg ?? '',
+    bloodType: patient?.bloodType || '',
+    allergies: patient?.allergies || '',
+    medications: patient?.medications || '',
+    pastMedicalHistory: patient?.pastMedicalHistory || '',
+    surgicalHistory: patient?.surgicalHistory || '',
+    familyHistory: patient?.familyHistory || '',
+    socialHistory: patient?.socialHistory || '',
+    currentSymptoms: patient?.currentSymptoms || '',
+    diagnosis: patient?.diagnosis || '',
+    notes: patient?.notes || '',
+  })
+
+  const [newPatientForm, setNewPatientForm] = useState(createEmptyPatientForm())
+  const [editPatientForm, setEditPatientForm] = useState(createEmptyPatientForm())
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -425,6 +513,65 @@ export default function ProfilePage() {
   const brainVelocity = useMemo(() => computeBrainVelocity(sessions), [sessions])
   const velocityClass = velocityBadgeClass(brainVelocity)
 
+  const intakeSections = useMemo(() => {
+    if (!currentPatient) return []
+
+    const contactRows = [
+      hasValue(currentPatient.phone) && { label: 'Phone', value: currentPatient.phone },
+      hasValue(currentPatient.email) && { label: 'Email', value: currentPatient.email },
+      hasValue(currentPatient.address) && { label: 'Address', value: currentPatient.address },
+    ].filter(Boolean)
+
+    const emergencyRows = [
+      hasValue(currentPatient.emergencyContactName) && { label: 'Contact Name', value: currentPatient.emergencyContactName },
+      hasValue(currentPatient.emergencyContactPhone) && { label: 'Contact Phone', value: currentPatient.emergencyContactPhone },
+    ].filter(Boolean)
+
+    const careRows = [
+      hasValue(currentPatient.primaryPhysician) && { label: 'Primary Physician', value: currentPatient.primaryPhysician },
+    ].filter(Boolean)
+
+    const insuranceRows = [
+      hasValue(currentPatient.insuranceProvider) && { label: 'Provider', value: currentPatient.insuranceProvider },
+      hasValue(currentPatient.insurancePolicyNumber) && { label: 'Policy Number', value: currentPatient.insurancePolicyNumber },
+    ].filter(Boolean)
+
+    const vitalsRows = [
+      currentPatient.heightCm != null && currentPatient.heightCm !== ''
+        ? { label: 'Height', value: `${currentPatient.heightCm} cm` }
+        : null,
+      currentPatient.weightKg != null && currentPatient.weightKg !== ''
+        ? { label: 'Weight', value: `${currentPatient.weightKg} kg` }
+        : null,
+      hasValue(currentPatient.bloodType) && { label: 'Blood Type', value: currentPatient.bloodType },
+    ].filter(Boolean)
+
+    const historyBlocks = [
+      hasValue(currentPatient.allergies) && { label: 'Allergies', value: currentPatient.allergies },
+      hasValue(currentPatient.medications) && { label: 'Current Medications', value: currentPatient.medications },
+      hasValue(currentPatient.pastMedicalHistory) && { label: 'Past Medical History', value: currentPatient.pastMedicalHistory },
+      hasValue(currentPatient.surgicalHistory) && { label: 'Surgical History', value: currentPatient.surgicalHistory },
+      hasValue(currentPatient.familyHistory) && { label: 'Family History', value: currentPatient.familyHistory },
+      hasValue(currentPatient.socialHistory) && { label: 'Social History', value: currentPatient.socialHistory },
+    ].filter(Boolean)
+
+    const presentationBlocks = [
+      hasValue(currentPatient.currentSymptoms) && { label: 'Current Symptoms', value: currentPatient.currentSymptoms },
+      hasValue(currentPatient.diagnosis) && { label: 'Working Diagnosis', value: currentPatient.diagnosis },
+      hasValue(currentPatient.notes) && { label: 'Notes', value: currentPatient.notes },
+    ].filter(Boolean)
+
+    return [
+      { title: 'Contact', rows: contactRows },
+      { title: 'Emergency Contact', rows: emergencyRows },
+      { title: 'Care Team', rows: careRows },
+      { title: 'Insurance', rows: insuranceRows },
+      { title: 'Vitals', rows: vitalsRows },
+      { title: 'Medical History', blocks: historyBlocks },
+      { title: 'Current Presentation', blocks: presentationBlocks },
+    ]
+  }, [currentPatient])
+
   useEffect(() => {
     if (!chartCanvasRef.current || datedSessions.length < 2) return
     drawVelocityChart(chartCanvasRef.current, sessions)
@@ -445,6 +592,13 @@ export default function ProfilePage() {
     setShowCreateModal(true)
   }
 
+  const openEditModal = () => {
+    if (!currentPatient) return
+    setEditError(null)
+    setEditPatientForm(buildPatientFormFromRecord(currentPatient))
+    setShowEditModal(true)
+  }
+
   const closeCreateModal = () => {
     setShowCreateModal(false)
     setCreateError(null)
@@ -457,8 +611,17 @@ export default function ProfilePage() {
     }
   }
 
+  const closeEditModal = () => {
+    setShowEditModal(false)
+    setEditError(null)
+  }
+
   const updateFormField = (key, value) => {
     setNewPatientForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  const updateEditField = (key, value) => {
+    setEditPatientForm(prev => ({ ...prev, [key]: value }))
   }
 
   const handleCreatePatient = async (event) => {
@@ -483,15 +646,84 @@ export default function ProfilePage() {
         age,
         gender: newPatientForm.gender,
         phone: newPatientForm.phone.trim(),
+        email: newPatientForm.email.trim(),
+        address: newPatientForm.address.trim(),
+        emergencyContactName: newPatientForm.emergencyContactName.trim(),
+        emergencyContactPhone: newPatientForm.emergencyContactPhone.trim(),
+        primaryPhysician: newPatientForm.primaryPhysician.trim(),
+        insuranceProvider: newPatientForm.insuranceProvider.trim(),
+        insurancePolicyNumber: newPatientForm.insurancePolicyNumber.trim(),
+        heightCm: newPatientForm.heightCm,
+        weightKg: newPatientForm.weightKg,
+        bloodType: newPatientForm.bloodType.trim(),
+        allergies: newPatientForm.allergies.trim(),
+        medications: newPatientForm.medications.trim(),
+        pastMedicalHistory: newPatientForm.pastMedicalHistory.trim(),
+        surgicalHistory: newPatientForm.surgicalHistory.trim(),
+        familyHistory: newPatientForm.familyHistory.trim(),
+        socialHistory: newPatientForm.socialHistory.trim(),
+        currentSymptoms: newPatientForm.currentSymptoms.trim(),
+        diagnosis: newPatientForm.diagnosis.trim(),
         notes: newPatientForm.notes.trim(),
       })
       setCurrentPatient(created)
-      setNewPatientForm({ name: '', age: '', gender: 'Female', phone: '', notes: '' })
+      setNewPatientForm(createEmptyPatientForm())
       closeCreateModal()
     } catch (error) {
       setCreateError(error.message || 'Failed to create patient profile.')
     } finally {
       setCreatingPatient(false)
+    }
+  }
+
+  const handleUpdatePatient = async (event) => {
+    event.preventDefault()
+    if (!currentPatient?.id) return
+
+    if (!editPatientForm.name.trim()) {
+      setEditError('Patient name is required.')
+      return
+    }
+
+    const age = Number(editPatientForm.age)
+    if (!Number.isFinite(age) || age < 1) {
+      setEditError('Please enter a valid age.')
+      return
+    }
+
+    setEditingPatient(true)
+    setEditError(null)
+    try {
+      await updatePatientProfile(currentPatient.id, {
+        name: editPatientForm.name.trim(),
+        age,
+        gender: editPatientForm.gender,
+        phone: editPatientForm.phone.trim(),
+        email: editPatientForm.email.trim(),
+        address: editPatientForm.address.trim(),
+        emergencyContactName: editPatientForm.emergencyContactName.trim(),
+        emergencyContactPhone: editPatientForm.emergencyContactPhone.trim(),
+        primaryPhysician: editPatientForm.primaryPhysician.trim(),
+        insuranceProvider: editPatientForm.insuranceProvider.trim(),
+        insurancePolicyNumber: editPatientForm.insurancePolicyNumber.trim(),
+        heightCm: editPatientForm.heightCm,
+        weightKg: editPatientForm.weightKg,
+        bloodType: editPatientForm.bloodType.trim(),
+        allergies: editPatientForm.allergies.trim(),
+        medications: editPatientForm.medications.trim(),
+        pastMedicalHistory: editPatientForm.pastMedicalHistory.trim(),
+        surgicalHistory: editPatientForm.surgicalHistory.trim(),
+        familyHistory: editPatientForm.familyHistory.trim(),
+        socialHistory: editPatientForm.socialHistory.trim(),
+        currentSymptoms: editPatientForm.currentSymptoms.trim(),
+        diagnosis: editPatientForm.diagnosis.trim(),
+        notes: editPatientForm.notes.trim(),
+      })
+      closeEditModal()
+    } catch (error) {
+      setEditError(error.message || 'Failed to update patient profile.')
+    } finally {
+      setEditingPatient(false)
     }
   }
 
@@ -773,6 +1005,13 @@ export default function ProfilePage() {
                         <Button variant="ghost" size="sm" icon={<Eye size={14} />}>New Oculomotor Assessment</Button>
                       </Link>
                       <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={openEditModal}
+                      >
+                        Edit Patient
+                      </Button>
+                      <Button
                         variant="danger"
                         size="sm"
                         icon={<Trash2 size={14} />}
@@ -781,6 +1020,63 @@ export default function ProfilePage() {
                       >
                         Delete Patient
                       </Button>
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-xl p-5 mb-4"
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="label-mono">Patient Intake</p>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.625rem',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        Collected at registration
+                      </span>
+                    </div>
+
+                    <div className="grid lg:grid-cols-2 gap-4">
+                      {intakeSections.map((section) => {
+                        const hasRows = section.rows && section.rows.length > 0
+                        const hasBlocks = section.blocks && section.blocks.length > 0
+                        return (
+                          <div
+                            key={section.title}
+                            className="rounded-lg p-3"
+                            style={{
+                              border: '1px solid var(--border-light)',
+                              background: 'var(--canvas-bg)',
+                            }}
+                          >
+                            <p className="label-mono mb-2">{section.title}</p>
+                            {hasRows && section.rows.map((row) => (
+                              <DetailRow key={`${section.title}-${row.label}`} label={row.label} value={row.value} />
+                            ))}
+                            {hasBlocks && section.blocks.map((block) => (
+                              <DetailBlock key={`${section.title}-${block.label}`} label={block.label} value={block.value} />
+                            ))}
+                            {!hasRows && !hasBlocks && (
+                              <p
+                                style={{
+                                  fontFamily: 'var(--font-body)',
+                                  fontSize: '0.8125rem',
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                No details added yet.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -1332,6 +1628,8 @@ export default function ProfilePage() {
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-light)',
               boxShadow: 'var(--shadow-elevated)',
+              maxHeight: '80vh',
+              overflowY: 'auto',
             }}
             onSubmit={handleCreatePatient}
           >
@@ -1430,6 +1728,371 @@ export default function ProfilePage() {
               </div>
 
               <div>
+                <label className="label-mono mb-1 block">Email (optional)</label>
+                <input
+                  type="email"
+                  value={newPatientForm.email}
+                  onChange={(event) => updateFormField('email', event.target.value)}
+                  placeholder="Email address"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Address (optional)</label>
+                <textarea
+                  value={newPatientForm.address}
+                  onChange={(event) => updateFormField('address', event.target.value)}
+                  placeholder="Street, city, state, postal code"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Emergency Contact</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Contact Name</label>
+                  <input
+                    type="text"
+                    value={newPatientForm.emergencyContactName}
+                    onChange={(event) => updateFormField('emergencyContactName', event.target.value)}
+                    placeholder="Full name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={newPatientForm.emergencyContactPhone}
+                    onChange={(event) => updateFormField('emergencyContactPhone', event.target.value)}
+                    placeholder="Phone number"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Care Team</p>
+              <div>
+                <label className="label-mono mb-1 block">Primary Physician (optional)</label>
+                <input
+                  type="text"
+                  value={newPatientForm.primaryPhysician}
+                  onChange={(event) => updateFormField('primaryPhysician', event.target.value)}
+                  placeholder="Physician or clinic"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Insurance</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Provider (optional)</label>
+                  <input
+                    type="text"
+                    value={newPatientForm.insuranceProvider}
+                    onChange={(event) => updateFormField('insuranceProvider', event.target.value)}
+                    placeholder="Provider name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Policy Number (optional)</label>
+                  <input
+                    type="text"
+                    value={newPatientForm.insurancePolicyNumber}
+                    onChange={(event) => updateFormField('insurancePolicyNumber', event.target.value)}
+                    placeholder="Policy or member ID"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Vitals</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Height (cm)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newPatientForm.heightCm}
+                    onChange={(event) => updateFormField('heightCm', event.target.value)}
+                    placeholder="Height"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Weight (kg)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newPatientForm.weightKg}
+                    onChange={(event) => updateFormField('weightKg', event.target.value)}
+                    placeholder="Weight"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Blood Type</label>
+                  <input
+                    type="text"
+                    value={newPatientForm.bloodType}
+                    onChange={(event) => updateFormField('bloodType', event.target.value)}
+                    placeholder="A+, O-, etc"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Medical History</p>
+              <div>
+                <label className="label-mono mb-1 block">Allergies (optional)</label>
+                <textarea
+                  value={newPatientForm.allergies}
+                  onChange={(event) => updateFormField('allergies', event.target.value)}
+                  placeholder="List known allergies"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Current Medications (optional)</label>
+                <textarea
+                  value={newPatientForm.medications}
+                  onChange={(event) => updateFormField('medications', event.target.value)}
+                  placeholder="Medication name, dose, and frequency"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Past Medical History (optional)</label>
+                <textarea
+                  value={newPatientForm.pastMedicalHistory}
+                  onChange={(event) => updateFormField('pastMedicalHistory', event.target.value)}
+                  placeholder="Chronic conditions, prior diagnoses"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Surgical History (optional)</label>
+                <textarea
+                  value={newPatientForm.surgicalHistory}
+                  onChange={(event) => updateFormField('surgicalHistory', event.target.value)}
+                  placeholder="Surgeries and approximate dates"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Family History (optional)</label>
+                <textarea
+                  value={newPatientForm.familyHistory}
+                  onChange={(event) => updateFormField('familyHistory', event.target.value)}
+                  placeholder="Neurologic, cognitive, or chronic conditions"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Social History (optional)</label>
+                <textarea
+                  value={newPatientForm.socialHistory}
+                  onChange={(event) => updateFormField('socialHistory', event.target.value)}
+                  placeholder="Smoking, alcohol, lifestyle factors"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Current Presentation</p>
+              <div>
+                <label className="label-mono mb-1 block">Current Symptoms / Chief Complaint (optional)</label>
+                <textarea
+                  value={newPatientForm.currentSymptoms}
+                  onChange={(event) => updateFormField('currentSymptoms', event.target.value)}
+                  placeholder="Main symptoms or reason for visit"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Working Diagnosis (optional)</label>
+                <textarea
+                  value={newPatientForm.diagnosis}
+                  onChange={(event) => updateFormField('diagnosis', event.target.value)}
+                  placeholder="Provisional or confirmed diagnosis"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
                 <label className="label-mono mb-1 block">Notes (optional)</label>
                 <textarea
                   value={newPatientForm.notes}
@@ -1469,6 +2132,527 @@ export default function ProfilePage() {
               </Button>
               <Button type="submit" size="sm" loading={creatingPatient}>
                 Create Patient
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.48)', zIndex: 60 }}
+        >
+          <form
+            className="w-full max-w-md rounded-xl p-6"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-light)',
+              boxShadow: 'var(--shadow-elevated)',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+            }}
+            onSubmit={handleUpdatePatient}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="label-mono">Edit Patient</p>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                aria-label="Close edit patient modal"
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="label-mono mb-1 block">Full Name</label>
+                <input
+                  type="text"
+                  value={editPatientForm.name}
+                  onChange={(event) => updateEditField('name', event.target.value)}
+                  placeholder="Enter patient name"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Age</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={editPatientForm.age}
+                    onChange={(event) => updateEditField('age', event.target.value)}
+                    placeholder="Age"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Gender</label>
+                  <select
+                    value={editPatientForm.gender}
+                    onChange={(event) => updateEditField('gender', event.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Phone (optional)</label>
+                <input
+                  type="text"
+                  value={editPatientForm.phone}
+                  onChange={(event) => updateEditField('phone', event.target.value)}
+                  placeholder="Phone number"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Email (optional)</label>
+                <input
+                  type="email"
+                  value={editPatientForm.email}
+                  onChange={(event) => updateEditField('email', event.target.value)}
+                  placeholder="Email address"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Address (optional)</label>
+                <textarea
+                  value={editPatientForm.address}
+                  onChange={(event) => updateEditField('address', event.target.value)}
+                  placeholder="Street, city, state, postal code"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Emergency Contact</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Contact Name</label>
+                  <input
+                    type="text"
+                    value={editPatientForm.emergencyContactName}
+                    onChange={(event) => updateEditField('emergencyContactName', event.target.value)}
+                    placeholder="Full name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={editPatientForm.emergencyContactPhone}
+                    onChange={(event) => updateEditField('emergencyContactPhone', event.target.value)}
+                    placeholder="Phone number"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Care Team</p>
+              <div>
+                <label className="label-mono mb-1 block">Primary Physician (optional)</label>
+                <input
+                  type="text"
+                  value={editPatientForm.primaryPhysician}
+                  onChange={(event) => updateEditField('primaryPhysician', event.target.value)}
+                  placeholder="Physician or clinic"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Insurance</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Provider (optional)</label>
+                  <input
+                    type="text"
+                    value={editPatientForm.insuranceProvider}
+                    onChange={(event) => updateEditField('insuranceProvider', event.target.value)}
+                    placeholder="Provider name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Policy Number (optional)</label>
+                  <input
+                    type="text"
+                    value={editPatientForm.insurancePolicyNumber}
+                    onChange={(event) => updateEditField('insurancePolicyNumber', event.target.value)}
+                    placeholder="Policy or member ID"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Vitals</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label-mono mb-1 block">Height (cm)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editPatientForm.heightCm}
+                    onChange={(event) => updateEditField('heightCm', event.target.value)}
+                    placeholder="Height"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Weight (kg)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editPatientForm.weightKg}
+                    onChange={(event) => updateEditField('weightKg', event.target.value)}
+                    placeholder="Weight"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label-mono mb-1 block">Blood Type</label>
+                  <input
+                    type="text"
+                    value={editPatientForm.bloodType}
+                    onChange={(event) => updateEditField('bloodType', event.target.value)}
+                    placeholder="A+, O-, etc"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--canvas-bg)',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '0.875rem',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="label-mono mt-2">Medical History</p>
+              <div>
+                <label className="label-mono mb-1 block">Allergies (optional)</label>
+                <textarea
+                  value={editPatientForm.allergies}
+                  onChange={(event) => updateEditField('allergies', event.target.value)}
+                  placeholder="List known allergies"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Current Medications (optional)</label>
+                <textarea
+                  value={editPatientForm.medications}
+                  onChange={(event) => updateEditField('medications', event.target.value)}
+                  placeholder="Medication name, dose, and frequency"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Past Medical History (optional)</label>
+                <textarea
+                  value={editPatientForm.pastMedicalHistory}
+                  onChange={(event) => updateEditField('pastMedicalHistory', event.target.value)}
+                  placeholder="Chronic conditions, prior diagnoses"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Surgical History (optional)</label>
+                <textarea
+                  value={editPatientForm.surgicalHistory}
+                  onChange={(event) => updateEditField('surgicalHistory', event.target.value)}
+                  placeholder="Surgeries and approximate dates"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Family History (optional)</label>
+                <textarea
+                  value={editPatientForm.familyHistory}
+                  onChange={(event) => updateEditField('familyHistory', event.target.value)}
+                  placeholder="Neurologic, cognitive, or chronic conditions"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Social History (optional)</label>
+                <textarea
+                  value={editPatientForm.socialHistory}
+                  onChange={(event) => updateEditField('socialHistory', event.target.value)}
+                  placeholder="Smoking, alcohol, lifestyle factors"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <p className="label-mono mt-2">Current Presentation</p>
+              <div>
+                <label className="label-mono mb-1 block">Current Symptoms / Chief Complaint (optional)</label>
+                <textarea
+                  value={editPatientForm.currentSymptoms}
+                  onChange={(event) => updateEditField('currentSymptoms', event.target.value)}
+                  placeholder="Main symptoms or reason for visit"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Working Diagnosis (optional)</label>
+                <textarea
+                  value={editPatientForm.diagnosis}
+                  onChange={(event) => updateEditField('diagnosis', event.target.value)}
+                  placeholder="Provisional or confirmed diagnosis"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="label-mono mb-1 block">Notes (optional)</label>
+                <textarea
+                  value={editPatientForm.notes}
+                  onChange={(event) => updateEditField('notes', event.target.value)}
+                  placeholder="Clinical notes"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--canvas-bg)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.875rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+            </div>
+
+            {editError && (
+              <p
+                className="mt-3"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '0.8125rem',
+                  color: 'var(--risk-critical)',
+                }}
+              >
+                {editError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={closeEditModal}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" loading={editingPatient}>
+                Save Changes
               </Button>
             </div>
           </form>

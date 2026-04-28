@@ -6,7 +6,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect } from 'react'
-import { addPatient, deletePatientById, getPatients } from '../services/firestore'
+import { addPatient, deletePatientById, getPatients, updatePatient } from '../services/firestore'
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
@@ -52,6 +52,17 @@ function appReducer(state, action) {
         ...state,
         patients: filtered,
         currentPatient: shouldClearCurrent ? null : state.currentPatient,
+      }
+    }
+
+    case 'UPDATE_PATIENT': {
+      const updatedPatients = state.patients.map(p =>
+        p.id === action.payload.id ? action.payload : p,
+      )
+      return {
+        ...state,
+        patients: updatedPatients,
+        currentPatient: action.payload,
       }
     }
 
@@ -106,12 +117,19 @@ export function AppProvider({ children }) {
     dispatch({ type: 'REMOVE_PATIENT', payload: patientId })
   }
 
+  const updatePatientProfile = async (patientId, patientInput) => {
+    const updated = await updatePatient(patientId, patientInput)
+    dispatch({ type: 'UPDATE_PATIENT', payload: updated })
+    return updated
+  }
+
   const value = {
     ...state,
     setCurrentPatient,
     clearCurrentPatient,
     addNewPatient,
     removePatient,
+    updatePatientProfile,
   }
 
   return (
