@@ -15,19 +15,18 @@ import Button from '../components/ui/Button'
 import Spinner from '../components/ui/Spinner'
 import { useApp } from '../context/AppContext'
 import { getAssessments } from '../services/firestore'
-
-function riskClass(score) {
-  if (score < 25) return 0
-  if (score < 45) return 1
-  if (score < 65) return 2
-  return 3
-}
+import { getRiskClass } from '../utils/riskUtils'
 
 function riskColor(classIdx) {
-  if (classIdx === 3) return 'var(--risk-critical)'
-  if (classIdx === 2) return 'var(--risk-high)'
-  if (classIdx === 1) return 'var(--risk-medium)'
-  return 'var(--risk-low)'
+  const colorVars = [
+    'var(--risk-low)',
+    'var(--risk-worried-well)',
+    'var(--risk-early-mci)',
+    'var(--risk-moderate-mci)',
+    'var(--risk-mild-dementia)',
+    'var(--risk-critical)',
+  ]
+  return colorVars[Math.min(5, Math.max(0, classIdx))]
 }
 
 function shortClassLabel(label) {
@@ -266,7 +265,7 @@ function drawVelocityChart(canvas, sessions) {
   ctx.stroke()
 
   scores.forEach((score, idx) => {
-    const klass = riskClass(score)
+    const klass = getRiskClass(score)
     const colors = ['#5c8f68', '#c4a84f', '#c47a3a', '#b04040']
 
     ctx.beginPath()
@@ -695,7 +694,7 @@ export default function ProfilePage() {
                           style={{
                             fontFamily: 'var(--font-display)',
                             fontSize: '1.5rem',
-                            color: latestSession ? riskColor(riskClass(latestSession.score)) : 'var(--text-muted)',
+                            color: latestSession ? riskColor(getRiskClass(latestSession.score)) : 'var(--text-muted)',
                           }}
                         >
                           {latestSession ? Math.round(latestSession.score) : '--'}
@@ -909,7 +908,7 @@ export default function ProfilePage() {
                         </div>
 
                         {sessionsDesc.map((session) => {
-                          const classIdx = riskClass(Number(session.score || 0))
+                          const classIdx = getRiskClass(Number(session.score || 0))
                           const color = riskColor(classIdx)
                           const open = !!expandedSessions[session.id]
                           const previewFlags = session.flags.slice(0, 2)

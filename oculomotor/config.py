@@ -32,8 +32,8 @@ RIRS_INDICES_FULL = [473, 474, 475, 476, 477]
 #  Task parameters
 # ══════════════════════════════════════════════════════════════════════════════
 
-ANTISACCADE_TRIALS      = 20          # number of antisaccade trials
-FIXATION_DURATION_S     = 1.5         # fixation cross shown for N seconds
+ANTISACCADE_TRIALS      = 8        # number of antisaccade trials
+FIXATION_DURATION_S     = 3        # fixation cross shown for N seconds
 RESPONSE_WINDOW_S       = 2.0         # data-recording window after stimulus
 STIMULUS_OFFSET_PX      = 400         # horizontal offset from screen centre
 CALIBRATION_DURATION_S  = 5.0         # neutral-look calibration window

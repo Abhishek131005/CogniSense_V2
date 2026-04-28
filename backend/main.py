@@ -98,3 +98,15 @@ async def root():
 async def health_check():
     """Simple health check — confirms API is up."""
     return {"status": "ok", "service": "CogniSense Unified API", "version": "1.0.0"}
+
+
+# ── Startup ───────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info",
+    )
