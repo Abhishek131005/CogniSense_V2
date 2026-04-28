@@ -84,10 +84,20 @@ class OculomotorAnalyzer:
     def __init__(self) -> None:
         self._report_path = REPO_ROOT / "oculomotor_output" / "oculomotor_report.json"
         self._oculomotor_root = REPO_ROOT / "oculomotor"
-        self._python_candidates = [
-            Path(sys.executable),
-            REPO_ROOT / ".venv" / "Scripts" / "python.exe",
-        ]
+        configured_python = os.getenv("COGNISENSE_OCULOMOTOR_PYTHON", "").strip()
+        self._python_candidates: list[Path] = []
+
+        if configured_python:
+            self._python_candidates.append(Path(configured_python))
+
+        # Prefer the project-local Python 3.10 venv for camera task compatibility.
+        self._python_candidates.extend(
+            [
+                REPO_ROOT / "backend" / "venv310" / "Scripts" / "python.exe",
+                Path(sys.executable),
+                REPO_ROOT / ".venv" / "Scripts" / "python.exe",
+            ]
+        )
 
     def health_status(self) -> dict[str, Any]:
         python_exec = self._resolve_python_executable()

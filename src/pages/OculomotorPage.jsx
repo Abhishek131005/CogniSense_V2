@@ -16,6 +16,7 @@ import Spinner from '../components/ui/Spinner'
 import { PatientSelector } from '../components/patient/PatientSelector'
 import { useApp } from '../context/AppContext'
 import { createAssessment } from '../services/firestore'
+import { getRiskLabel, getClinicalStage } from '../utils/riskUtils'
 import {
   analyzeLatestOculomotorReport,
   analyzeOculomotorDemo,
@@ -32,10 +33,15 @@ const DEFAULT_METRICS = {
 }
 
 function riskColor(classIdx) {
-  if (classIdx === 3) return 'var(--risk-critical)'
-  if (classIdx === 2) return 'var(--risk-high)'
-  if (classIdx === 1) return 'var(--risk-medium)'
-  return 'var(--risk-low)'
+  const colorVars = [
+    'var(--risk-low)',
+    'var(--risk-worried-well)',
+    'var(--risk-early-mci)',
+    'var(--risk-moderate-mci)',
+    'var(--risk-mild-dementia)',
+    'var(--risk-critical)',
+  ]
+  return colorVars[Math.min(5, Math.max(0, classIdx))]
 }
 
 function toNumber(value, fallback) {
@@ -476,19 +482,8 @@ export default function OculomotorPage() {
                       >
                         {Math.round(Number(result.risk_score || 0))}
                       </p>
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.75rem',
-                          letterSpacing: '0.1em',
-                          textTransform: 'uppercase',
-                          color: 'var(--text-on-dark-muted)',
-                        }}
-                      >
-                        class {result.risk_class}
-                      </span>
                     </div>
-                    <p style={{ fontFamily: 'var(--font-body)', marginTop: 4 }}>{result.risk_label}</p>
+                    <p style={{ fontFamily: 'var(--font-body)', marginTop: 4, fontWeight: 600, color: riskColor(result.risk_class), fontSize: '0.9375rem' }}>Class {result.risk_class} — {getRiskLabel(result.risk_class)} — {getClinicalStage(result.risk_class)}</p>
                     <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-on-dark-muted)', marginTop: 8 }}>
                       Clinical Risk: {result.clinical_risk}
                     </p>

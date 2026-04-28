@@ -15,6 +15,7 @@ import subprocess
 import wave
 import logging
 import importlib.util
+import warnings
 from collections import Counter
 from dataclasses import dataclass
 from typing import Optional
@@ -116,10 +117,10 @@ class SpeechAnalyzer:
     def __init__(self) -> None:
         self.model_loaded = False
         self.asr_pipeline = None
-        self.asr_model_id = os.getenv("COGNISENSE_ASR_MODEL", "openai/whisper-medium")
+        self.asr_model_id = os.getenv("COGNISENSE_ASR_MODEL", "openai/whisper-small")
         fallback_models_raw = os.getenv(
             "COGNISENSE_ASR_FALLBACK_MODELS",
-            "openai/whisper-small,openai/whisper-base",
+            "openai/whisper-base,openai/whisper-tiny",
         )
         self.asr_fallback_models = [
             model_id.strip()
@@ -127,10 +128,18 @@ class SpeechAnalyzer:
             if model_id and model_id.strip()
         ]
         try:
-            self.asr_chunk_length_s = max(12, int(os.getenv("COGNISENSE_ASR_CHUNK_LENGTH_S", "22")))
+            self.asr_chunk_length_s = max(10, int(os.getenv("COGNISENSE_ASR_CHUNK_LENGTH_S", "15")))
         except Exception:
-            self.asr_chunk_length_s = 22
+            self.asr_chunk_length_s = 15
+        try:
+            self.asr_max_audio_seconds = max(
+                10,
+                int(os.getenv("COGNISENSE_ASR_MAX_AUDIO_SECONDS", "35")),
+            )
+        except Exception:
+            self.asr_max_audio_seconds = 35
         self.asr_effective_model_id = None
+        self.asr_enable_retry = os.getenv("COGNISENSE_ASR_ENABLE_RETRY", "false").lower() == "true"
         self.enable_asr = os.getenv("COGNISENSE_ENABLE_ASR", "true").lower() == "true"
         self._load_asr()
 
@@ -144,9 +153,11 @@ class SpeechAnalyzer:
             try:
                 import torch as _torch
                 from transformers import pipeline as _pipeline
+                from transformers.utils import logging as _hf_logging
 
                 torch = _torch
                 pipeline = _pipeline
+                _hf_logging.set_verbosity_error()
             except Exception as exc:
                 logger.warning("ASR dependencies unavailable: %s", exc)
                 ASR_OK = False
@@ -166,6 +177,14 @@ class SpeechAnalyzer:
                     device=device,
                     chunk_length_s=self.asr_chunk_length_s,
                 )
+                model = getattr(self.asr_pipeline, "model", None)
+                if model is not None:
+                    cfg = getattr(model, "config", None)
+                    if cfg is not None and hasattr(cfg, "forced_decoder_ids"):
+                        cfg.forced_decoder_ids = None
+                    gen_cfg = getattr(model, "generation_config", None)
+                    if gen_cfg is not None and hasattr(gen_cfg, "forced_decoder_ids"):
+                        gen_cfg.forced_decoder_ids = None
                 self.asr_effective_model_id = candidate_model_id
                 self.model_loaded = True
                 return
@@ -445,7 +464,7 @@ class SpeechAnalyzer:
                     detected_language = selected_language
 
                 # Second-pass retry for selected languages when first pass is weak or script-mismatched.
-                if selected_language != "auto" and (
+                if self.asr_enable_retry and selected_language != "auto" and (
                     self._is_low_information_transcript(transcript)
                     or self._script_mismatch(transcript, selected_language)
                 ):
@@ -766,7 +785,7 @@ class SpeechAnalyzer:
         language_code: str,
         strict: bool = False,
     ) -> dict:
-        generate_kwargs = {"task": "transcribe"}
+        generate_kwargs = {}
 
         normalized_language = self._normalize_language_code(language_code)
         if normalized_language not in ("auto", "unknown"):
@@ -776,21 +795,28 @@ class SpeechAnalyzer:
             )
             generate_kwargs["language"] = whisper_language
             generate_kwargs["temperature"] = 0.0
-            forced_decoder_ids = self._get_forced_decoder_ids(whisper_language)
-            if forced_decoder_ids:
-                generate_kwargs["forced_decoder_ids"] = forced_decoder_ids
 
         if strict:
             generate_kwargs["temperature"] = 0.0
             generate_kwargs["condition_on_prev_tokens"] = True
             generate_kwargs["no_repeat_ngram_size"] = 2
-            generate_kwargs["num_beams"] = 5
+            generate_kwargs["num_beams"] = 2
 
-        return self.asr_pipeline(
-            {"array": asr_array, "sampling_rate": sample_rate},
-            return_timestamps=False,
-            generate_kwargs=generate_kwargs,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"The input name `inputs` is deprecated.*",
+                category=FutureWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=r"The attention mask is not set.*",
+            )
+            return self.asr_pipeline(
+                {"array": asr_array, "sampling_rate": sample_rate},
+                return_timestamps=False,
+                generate_kwargs=generate_kwargs,
+            )
 
     def _prepare_asr_audio(self, y: np.ndarray, sample_rate: int) -> np.ndarray:
         asr_array = y.astype(np.float32)
@@ -808,6 +834,10 @@ class SpeechAnalyzer:
             end = min(asr_array.size, int(speech_indices[-1]) + pad + 1)
             if end - start > int(0.5 * sample_rate):
                 asr_array = asr_array[start:end]
+
+        max_samples = int(self.asr_max_audio_seconds * sample_rate)
+        if max_samples > 0 and asr_array.size > max_samples:
+            asr_array = asr_array[:max_samples]
 
         peak = float(np.max(np.abs(asr_array))) if asr_array.size > 0 else 0.0
         if peak > 0:

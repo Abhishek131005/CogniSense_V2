@@ -28,6 +28,7 @@ import { PatientSelector } from '../components/patient/PatientSelector'
 import { useApp } from '../context/AppContext'
 import { analyzeSpeechAudio, analyzeSpeechDemo } from '../services/speech'
 import { createAssessment } from '../services/firestore'
+import { getRiskClass, getRiskLabel, getClinicalStage } from '../utils/riskUtils'
 import kitchenSceneImage from '../assets/prompts/kitchen-scene.svg'
 import parkSceneImage from '../assets/prompts/park-scene.svg'
 import marketSceneImage from '../assets/prompts/market-scene.svg'
@@ -133,18 +134,16 @@ const ANALYSIS_STAGES = [
   'Estimating cognitive risk score...',
 ]
 
-function riskClass(score) {
-  if (score < 25) return 0
-  if (score < 45) return 1
-  if (score < 65) return 2
-  return 3
-}
-
 function riskColorFromClass(c) {
-  if (c === 3) return 'var(--risk-critical)'
-  if (c === 2) return 'var(--risk-high)'
-  if (c === 1) return 'var(--risk-medium)'
-  return 'var(--risk-low)'
+  const colorVars = [
+    'var(--risk-low)',
+    'var(--risk-worried-well)',
+    'var(--risk-early-mci)',
+    'var(--risk-moderate-mci)',
+    'var(--risk-mild-dementia)',
+    'var(--risk-critical)',
+  ]
+  return colorVars[Math.min(5, Math.max(0, c))]
 }
 
 function clampPercent(value) {
@@ -389,7 +388,7 @@ export default function SpeechPage() {
 
   const riskIndex = useMemo(() => {
     if (!result) return 0
-    return riskClass(Number(result.risk_score || 0))
+    return getRiskClass(Number(result.risk_score || 0))
   }, [result])
 
   const riskColor = useMemo(() => riskColorFromClass(riskIndex), [riskIndex])
@@ -1763,11 +1762,12 @@ export default function SpeechPage() {
                         <p
                           style={{
                             fontFamily: 'var(--font-body)',
-                            fontWeight: 500,
-                            color: 'var(--text-primary)',
+                            fontWeight: 600,
+                            color: riskColor,
+                            fontSize: '0.9375rem',
                           }}
                         >
-                          {result.risk_class || result.interpretation?.risk_class}
+                          Class {result.risk_class || result.interpretation?.risk_class} — {getRiskLabel(result.risk_class || result.interpretation?.risk_class)} — {getClinicalStage(result.risk_class || result.interpretation?.risk_class)}
                         </p>
                       </div>
 

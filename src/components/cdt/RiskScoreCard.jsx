@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import ProgressBar from '../ui/ProgressBar'
 import Badge from '../ui/Badge'
-import { getRiskColor, toPercent } from '../../utils/riskUtils'
+import { getRiskColor, toPercent, getClinicalStage } from '../../utils/riskUtils'
 import { formatDurationHuman, formatVelocity } from '../../utils/formatters'
 
 /**
@@ -138,12 +138,13 @@ export function RiskScoreCard({ assessment }) {
         className="mb-8"
         style={{
           fontFamily: 'var(--font-body)',
-          fontSize: '0.875rem',
-          fontWeight: 300,
-          color: 'var(--text-on-dark-muted)',
+          fontSize: '0.9375rem',
+          fontWeight: 600,
+          color: riskColor,
+          letterSpacing: '0.02em',
         }}
       >
-        Class {riskClass} — {riskLabel}
+        Class {riskClass} — {riskLabel} — {getClinicalStage(riskClass)}
       </p>
 
       {/* Feature progress bars */}

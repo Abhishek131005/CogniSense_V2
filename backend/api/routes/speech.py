@@ -6,8 +6,10 @@ Speech module routes for CogniSense.
 
 import os
 import tempfile
+import asyncio
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from utils.speech_models import SpeechAnalysisResult
 
@@ -45,7 +47,23 @@ async def analyze_speech(
         tmp_path = tmp.name
 
     try:
-        return analyzer.analyze(tmp_path, language=language)
+        try:
+            timeout_seconds = max(30, int(os.getenv("COGNISENSE_SPEECH_ANALYZE_TIMEOUT_SECONDS", "120")))
+        except Exception:
+            timeout_seconds = 120
+
+        return await asyncio.wait_for(
+            run_in_threadpool(analyzer.analyze, tmp_path, language),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Speech analysis timed out. Please try a shorter recording "
+                "or switch language to Auto-detect."
+            ),
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Speech analysis failed: {exc}") from exc
     finally:

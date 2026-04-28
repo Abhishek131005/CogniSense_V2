@@ -114,6 +114,24 @@ function normalizePatientRecord(record, fallbackId = '') {
     age: Math.max(0, toFiniteNumber(record?.age, 0)),
     gender: String(record?.gender || 'Other'),
     phone: typeof record?.phone === 'string' ? record.phone.trim() : '',
+    email: typeof record?.email === 'string' ? record.email.trim() : '',
+    address: typeof record?.address === 'string' ? record.address.trim() : '',
+    emergencyContactName: typeof record?.emergencyContactName === 'string' ? record.emergencyContactName.trim() : '',
+    emergencyContactPhone: typeof record?.emergencyContactPhone === 'string' ? record.emergencyContactPhone.trim() : '',
+    primaryPhysician: typeof record?.primaryPhysician === 'string' ? record.primaryPhysician.trim() : '',
+    insuranceProvider: typeof record?.insuranceProvider === 'string' ? record.insuranceProvider.trim() : '',
+    insurancePolicyNumber: typeof record?.insurancePolicyNumber === 'string' ? record.insurancePolicyNumber.trim() : '',
+    heightCm: toFiniteNumber(record?.heightCm, null),
+    weightKg: toFiniteNumber(record?.weightKg, null),
+    bloodType: typeof record?.bloodType === 'string' ? record.bloodType.trim() : '',
+    allergies: typeof record?.allergies === 'string' ? record.allergies.trim() : '',
+    medications: typeof record?.medications === 'string' ? record.medications.trim() : '',
+    pastMedicalHistory: typeof record?.pastMedicalHistory === 'string' ? record.pastMedicalHistory.trim() : '',
+    surgicalHistory: typeof record?.surgicalHistory === 'string' ? record.surgicalHistory.trim() : '',
+    familyHistory: typeof record?.familyHistory === 'string' ? record.familyHistory.trim() : '',
+    socialHistory: typeof record?.socialHistory === 'string' ? record.socialHistory.trim() : '',
+    currentSymptoms: typeof record?.currentSymptoms === 'string' ? record.currentSymptoms.trim() : '',
+    diagnosis: typeof record?.diagnosis === 'string' ? record.diagnosis.trim() : '',
     notes: typeof record?.notes === 'string' ? record.notes.trim() : '',
     createdAt: normalizedCreatedAt,
     sessionCount: Math.max(0, toFiniteNumber(record?.sessionCount, 0)),
@@ -189,6 +207,24 @@ function buildPatientBackfill(raw, normalized) {
   if (!Number.isFinite(Number(raw?.age))) patch.age = normalized.age
   if (typeof raw?.gender !== 'string' || !raw.gender.trim()) patch.gender = normalized.gender
   if (typeof raw?.phone !== 'string') patch.phone = normalized.phone
+  if (typeof raw?.email !== 'string') patch.email = normalized.email
+  if (typeof raw?.address !== 'string') patch.address = normalized.address
+  if (typeof raw?.emergencyContactName !== 'string') patch.emergencyContactName = normalized.emergencyContactName
+  if (typeof raw?.emergencyContactPhone !== 'string') patch.emergencyContactPhone = normalized.emergencyContactPhone
+  if (typeof raw?.primaryPhysician !== 'string') patch.primaryPhysician = normalized.primaryPhysician
+  if (typeof raw?.insuranceProvider !== 'string') patch.insuranceProvider = normalized.insuranceProvider
+  if (typeof raw?.insurancePolicyNumber !== 'string') patch.insurancePolicyNumber = normalized.insurancePolicyNumber
+  if (raw?.heightCm !== normalized.heightCm) patch.heightCm = normalized.heightCm
+  if (raw?.weightKg !== normalized.weightKg) patch.weightKg = normalized.weightKg
+  if (typeof raw?.bloodType !== 'string') patch.bloodType = normalized.bloodType
+  if (typeof raw?.allergies !== 'string') patch.allergies = normalized.allergies
+  if (typeof raw?.medications !== 'string') patch.medications = normalized.medications
+  if (typeof raw?.pastMedicalHistory !== 'string') patch.pastMedicalHistory = normalized.pastMedicalHistory
+  if (typeof raw?.surgicalHistory !== 'string') patch.surgicalHistory = normalized.surgicalHistory
+  if (typeof raw?.familyHistory !== 'string') patch.familyHistory = normalized.familyHistory
+  if (typeof raw?.socialHistory !== 'string') patch.socialHistory = normalized.socialHistory
+  if (typeof raw?.currentSymptoms !== 'string') patch.currentSymptoms = normalized.currentSymptoms
+  if (typeof raw?.diagnosis !== 'string') patch.diagnosis = normalized.diagnosis
   if (typeof raw?.notes !== 'string') patch.notes = normalized.notes
   if (!Number.isFinite(Number(raw?.sessionCount))) patch.sessionCount = normalized.sessionCount
   if (raw?.modelVersion !== 'patient.v1') patch.modelVersion = 'patient.v1'
@@ -265,7 +301,7 @@ export async function getPatient(patientId) {
 
 /**
  * Create a new patient profile.
- * @param {{name: string, age: number, gender: string, phone?: string}} patient
+ * @param {{name: string, age: number, gender: string, phone?: string, email?: string, address?: string, emergencyContactName?: string, emergencyContactPhone?: string, primaryPhysician?: string, insuranceProvider?: string, insurancePolicyNumber?: string, heightCm?: number, weightKg?: number, bloodType?: string, allergies?: string, medications?: string, pastMedicalHistory?: string, surgicalHistory?: string, familyHistory?: string, socialHistory?: string, currentSymptoms?: string, diagnosis?: string, notes?: string}} patient
  * @returns {Promise<Patient>}
  */
 export async function addPatient(patient) {
@@ -274,6 +310,24 @@ export async function addPatient(patient) {
     age: Number(patient.age) || 0,
     gender: patient.gender || 'Other',
     phone: (patient.phone || '').trim(),
+    email: (patient.email || '').trim(),
+    address: (patient.address || '').trim(),
+    emergencyContactName: (patient.emergencyContactName || '').trim(),
+    emergencyContactPhone: (patient.emergencyContactPhone || '').trim(),
+    primaryPhysician: (patient.primaryPhysician || '').trim(),
+    insuranceProvider: (patient.insuranceProvider || '').trim(),
+    insurancePolicyNumber: (patient.insurancePolicyNumber || '').trim(),
+    heightCm: patient.heightCm,
+    weightKg: patient.weightKg,
+    bloodType: (patient.bloodType || '').trim(),
+    allergies: (patient.allergies || '').trim(),
+    medications: (patient.medications || '').trim(),
+    pastMedicalHistory: (patient.pastMedicalHistory || '').trim(),
+    surgicalHistory: (patient.surgicalHistory || '').trim(),
+    familyHistory: (patient.familyHistory || '').trim(),
+    socialHistory: (patient.socialHistory || '').trim(),
+    currentSymptoms: (patient.currentSymptoms || '').trim(),
+    diagnosis: (patient.diagnosis || '').trim(),
     notes: (patient.notes || '').trim(),
     createdAt: new Date(),
     sessionCount: 0,
@@ -317,6 +371,86 @@ export async function deletePatientById(patientId) {
   const snap = await getDocs(assessmentsRef)
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)))
   await deleteDoc(doc(db, 'patients', patientId))
+}
+
+/**
+ * Update a patient profile.
+ * @param {string} patientId
+ * @param {object} patientPatch
+ * @returns {Promise<Patient>}
+ */
+export async function updatePatient(patientId, patientPatch) {
+  const normalized = normalizePatientRecord({
+    id: patientId,
+    name: (patientPatch?.name || '').trim(),
+    age: Number(patientPatch?.age) || 0,
+    gender: patientPatch?.gender || 'Other',
+    phone: (patientPatch?.phone || '').trim(),
+    email: (patientPatch?.email || '').trim(),
+    address: (patientPatch?.address || '').trim(),
+    emergencyContactName: (patientPatch?.emergencyContactName || '').trim(),
+    emergencyContactPhone: (patientPatch?.emergencyContactPhone || '').trim(),
+    primaryPhysician: (patientPatch?.primaryPhysician || '').trim(),
+    insuranceProvider: (patientPatch?.insuranceProvider || '').trim(),
+    insurancePolicyNumber: (patientPatch?.insurancePolicyNumber || '').trim(),
+    heightCm: patientPatch?.heightCm ?? null,
+    weightKg: patientPatch?.weightKg ?? null,
+    bloodType: (patientPatch?.bloodType || '').trim(),
+    allergies: (patientPatch?.allergies || '').trim(),
+    medications: (patientPatch?.medications || '').trim(),
+    pastMedicalHistory: (patientPatch?.pastMedicalHistory || '').trim(),
+    surgicalHistory: (patientPatch?.surgicalHistory || '').trim(),
+    familyHistory: (patientPatch?.familyHistory || '').trim(),
+    socialHistory: (patientPatch?.socialHistory || '').trim(),
+    currentSymptoms: (patientPatch?.currentSymptoms || '').trim(),
+    diagnosis: (patientPatch?.diagnosis || '').trim(),
+    notes: (patientPatch?.notes || '').trim(),
+  }, patientId)
+
+  const updatePayload = {
+    name: normalized.name,
+    age: normalized.age,
+    gender: normalized.gender,
+    phone: normalized.phone,
+    email: normalized.email,
+    address: normalized.address,
+    emergencyContactName: normalized.emergencyContactName,
+    emergencyContactPhone: normalized.emergencyContactPhone,
+    primaryPhysician: normalized.primaryPhysician,
+    insuranceProvider: normalized.insuranceProvider,
+    insurancePolicyNumber: normalized.insurancePolicyNumber,
+    heightCm: normalized.heightCm,
+    weightKg: normalized.weightKg,
+    bloodType: normalized.bloodType,
+    allergies: normalized.allergies,
+    medications: normalized.medications,
+    pastMedicalHistory: normalized.pastMedicalHistory,
+    surgicalHistory: normalized.surgicalHistory,
+    familyHistory: normalized.familyHistory,
+    socialHistory: normalized.socialHistory,
+    currentSymptoms: normalized.currentSymptoms,
+    diagnosis: normalized.diagnosis,
+    notes: normalized.notes,
+    modelVersion: 'patient.v1',
+  }
+
+  if (USE_MOCK) {
+    await delay(400)
+    const idx = MOCK_PATIENTS.findIndex(p => p.id === patientId)
+    if (idx !== -1) {
+      MOCK_PATIENTS[idx] = normalizePatientRecord(
+        { ...MOCK_PATIENTS[idx], ...updatePayload, id: patientId },
+        patientId,
+      )
+      return MOCK_PATIENTS[idx]
+    }
+    const fallback = normalizePatientRecord({ ...updatePayload, id: patientId }, patientId)
+    MOCK_PATIENTS.unshift(fallback)
+    return fallback
+  }
+
+  await updateDoc(doc(db, 'patients', patientId), updatePayload)
+  return normalizePatientRecord({ ...updatePayload, id: patientId }, patientId)
 }
 
 /**

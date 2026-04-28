@@ -17,15 +17,29 @@ async function parseError(response) {
   return `API ${response.status}: ${detail}`
 }
 
-export async function analyzeSpeechAudio(file, language = 'auto') {
+export async function analyzeSpeechAudio(file, language = 'auto', timeoutMs = 120000) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('language', language)
 
-  const response = await fetch(`${ML_API_URL}/api/speech/analyze`, {
-    method: 'POST',
-    body: formData,
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  let response
+  try {
+    response = await fetch(`${ML_API_URL}/api/speech/analyze`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Speech analysis timed out after ${Math.round(timeoutMs / 1000)}s. Please try a shorter/clearer recording.`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     throw new Error(await parseError(response))

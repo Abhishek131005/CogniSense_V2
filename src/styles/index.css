@@ -34,11 +34,13 @@
   --accent-italic:   #6FA876;
   --accent-glow:     rgba(92, 143, 104, 0.15);
 
-  /* Risk Colors */
-  --risk-low:        #5C8F68;
-  --risk-medium:     #C4A84F;
-  --risk-high:       #C47A3A;
-  --risk-critical:   #B04040;
+  /* Risk Colors — 6-class fine-grained system */
+  --risk-low:              #5C8F68;   /* Class 0: Cognitively Normal */
+  --risk-worried-well:     #D4B563;   /* Class 1: Worried Well */
+  --risk-early-mci:        #D9A23C;   /* Class 2: Early MCI */
+  --risk-moderate-mci:     #D27F2B;   /* Class 3: Moderate MCI */
+  --risk-mild-dementia:    #C85D3C;   /* Class 4: Mild Dementia */
+  --risk-critical:         #B04040;   /* Class 5: Severe - Urgent Referral */
 
   /* Canvas */
   --canvas-bg:       #FAF8F4;
