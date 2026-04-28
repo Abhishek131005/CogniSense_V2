@@ -78,6 +78,14 @@ def _recommendation_for_class(risk_class: int) -> str:
     return "High-risk oculomotor profile. Recommend urgent specialist referral and multimodal follow-up."
 
 
+def _is_missing_metric(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip().upper() in {"", "N/A", "NA", "NONE"}:
+        return True
+    return False
+
+
 class OculomotorAnalyzer:
     """Risk fusion analyzer for oculomotor metrics."""
 
@@ -224,7 +232,25 @@ class OculomotorAnalyzer:
             + stability_component * 15.0
             + pursuit_component * 15.0
         )
-        risk_score = round(_clamp(risk_score, 0.0, 100.0), 1)
+        risk_score = _clamp(risk_score, 0.0, 100.0)
+
+        tracking_quality = 1.0
+        missing_latency = False
+        missing_pursuit = False
+        if report_payload and source == "pipeline-report":
+            missing_latency = _is_missing_metric(report_payload.get("avg_latency_ms"))
+            missing_pursuit = _is_missing_metric(report_payload.get("pursuit_gain"))
+
+            if missing_latency:
+                tracking_quality -= 0.2
+            if missing_pursuit:
+                tracking_quality -= 0.2
+
+            if error_rate >= 80 and fixation_rmsd < 0.05 and missing_latency and missing_pursuit:
+                tracking_quality = min(tracking_quality, 0.25)
+
+        tracking_quality = _clamp(tracking_quality, 0.25, 1.0)
+        risk_score = round(_clamp(risk_score * tracking_quality, 0.0, 100.0), 1)
 
         # Clinical risk rule set from standalone report logic.
         risk_points = 0
@@ -246,6 +272,9 @@ class OculomotorAnalyzer:
                 risk_points += 2
             elif pursuit_gain < 0.85:
                 risk_points += 1
+
+        if tracking_quality <= 0.35:
+            risk_points = min(risk_points, 2)
 
         clinical_risk = _clinical_risk_from_points(risk_points)
 
@@ -273,6 +302,9 @@ class OculomotorAnalyzer:
                 flags.append(f"Suboptimal smooth pursuit gain ({pursuit_gain:.3f}).")
         else:
             flags.append("Smooth pursuit gain unavailable; computed from antisaccade-only metrics.")
+
+        if tracking_quality <= 0.35:
+            flags.append("Tracking quality was low; risk score was down-weighted. Consider rerunning the task.")
 
         if not flags:
             flags.append("No major oculomotor red flags in this sample.")
@@ -304,6 +336,9 @@ class OculomotorAnalyzer:
                     "latency_component": round(latency_component, 4),
                     "stability_component": round(stability_component, 4),
                     "pursuit_component": round(pursuit_component, 4),
+                    "tracking_quality": round(tracking_quality, 3),
+                    "missing_latency": missing_latency,
+                    "missing_pursuit": missing_pursuit,
                 },
                 "raw_report": report_payload,
             },

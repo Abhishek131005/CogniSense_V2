@@ -42,6 +42,10 @@
   --risk-mild-dementia:    #C85D3C;   /* Class 4: Mild Dementia */
   --risk-critical:         #B04040;   /* Class 5: Severe - Urgent Referral */
 
+  /* Aliases for simplified risk labels */
+  --risk-medium:           var(--risk-early-mci);
+  --risk-high:             var(--risk-mild-dementia);
+
   /* Canvas */
   --canvas-bg:       #FAF8F4;
   --canvas-stroke:   #1C1C18;
