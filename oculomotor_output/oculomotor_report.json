@@ -1,10 +1,10 @@
 {
   "n_trials": 8,
-  "n_errors": 8,
-  "error_rate": "100.0%",
-  "avg_latency_ms": "N/A",
-  "stability_score": "0.0259",
-  "pursuit_gain": "N/A",
-  "clinical_risk": "Low",
-  "timestamp_utc": "2026-04-28T18:52:49Z"
+  "n_errors": 4,
+  "error_rate": "50.0%",
+  "avg_latency_ms": "464.5",
+  "stability_score": "0.0285",
+  "pursuit_gain": "0.912",
+  "clinical_risk": "Medium",
+  "timestamp_utc": "2026-09-01T09:21:19Z"
 }

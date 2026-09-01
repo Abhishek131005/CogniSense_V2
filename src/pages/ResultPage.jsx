@@ -18,6 +18,7 @@ import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import { RiskScoreCard } from '../components/cdt/RiskScoreCard'
 import { ClockThumbnail } from '../components/cdt/ClockThumbnail'
+import { ClockComparison } from '../components/cdt/ClockComparison'
 import { FeatureGrid } from '../components/cdt/FeatureGrid'
 import Spinner from '../components/ui/Spinner'
 import Button from '../components/ui/Button'
@@ -424,6 +425,11 @@ export function ResultPage() {
               </div>
 
             </div>
+          </div>
+
+          {/* Interactive submitted-versus-target comparison */}
+          <div className="mb-10">
+            <ClockComparison assessment={assessment} />
           </div>
 
           {/* Feature Grid */}

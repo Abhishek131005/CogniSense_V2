@@ -13,7 +13,7 @@
 // ── Real Firebase ─────────────────────────────────────────────────────────────
 
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
@@ -46,6 +46,7 @@ let storage
 let googleProvider
 let firebaseInitError = null
 let firebaseAuthError = null
+let authReady = Promise.resolve(null)
 
 const missingKeys = requiredEnvKeys.filter((k) => !import.meta.env[k])
 
@@ -66,11 +67,24 @@ if (missingKeys.length > 0) {
     try {
       auth = getAuth(app)
       googleProvider = new GoogleAuthProvider()
+      authReady = auth.currentUser
+        ? Promise.resolve(auth.currentUser)
+        : signInAnonymously(auth).then((credential) => credential.user)
+      authReady = authReady.then(async (user) => {
+        if (!user) throw new Error('Firebase authentication did not return a user.')
+        await user.getIdToken(true)
+        console.info('[Firebase Auth] Anonymous sign-in ready.', {
+          projectId: firebaseConfig.projectId,
+          uid: user.uid,
+        })
+        return user
+      })
     } catch (error) {
       firebaseAuthError = error
+      authReady = Promise.reject(error)
       console.warn('[Firebase Auth Warning] Auth initialization failed. Firestore can still work if rules allow.', error)
     }
   }
 }
 
-export { app, auth, db, storage, googleProvider, firebaseInitError, firebaseAuthError }
+export { app, auth, db, storage, googleProvider, authReady, firebaseInitError, firebaseAuthError }

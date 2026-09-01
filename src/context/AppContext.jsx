@@ -7,6 +7,7 @@
 
 import { createContext, useContext, useReducer, useEffect } from 'react'
 import { addPatient, deletePatientById, getPatients, updatePatient } from '../services/firestore'
+import { authReady } from '../services/firebase'
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
@@ -82,7 +83,8 @@ export function AppProvider({ children }) {
   useEffect(() => {
     let cancelled = false
 
-    getPatients()
+    authReady
+      .then(() => getPatients())
       .then(patients => {
         if (!cancelled) {
           dispatch({ type: 'SET_PATIENTS', payload: patients })
