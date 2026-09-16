@@ -1,7 +1,7 @@
 """
 ================================================================================
  CogniSense — Oculomotor Diagnostic Module
- ReportGenerator - Clinical summary and visualisation
+ ReportGenerator — clinical summary, 0-100 score, 6-class label
 ================================================================================
 """
 
@@ -12,126 +12,182 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")          # headless-safe backend
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from ..config import (
-    FIXATION_DURATION_S, RESPONSE_WINDOW_S, SACCADE_VELOCITY_DEG_S,
-    SUMMARY_JSON, PLOT_PATH
-)
-from ..data.data_containers import GazePoint, TrialResult
+from ..config import SUMMARY_JSON, PLOT_PATH, SACCADE_VELOCITY_DEG_S
+from ..data.data_containers import GazePoint, TrialResult, SessionResult
+from .biomarker_engine import BiomarkerEngine
 
 
 class ReportGenerator:
-    """
-    Aggregates trial results into:
-      • JSON clinical summary
-      • matplotlib gaze-path visualisation (best + worst trial)
-    """
 
-    # ── risk stratification ───────────────────────────────────────────────
+    # ── per-trial serialisation ───────────────────────────────────────────
     @staticmethod
-    def _risk(error_rate: float, mean_latency: float,
-              mean_rmsd: float, pursuit_gain: float) -> str:
-        """
-        Simple deterministic rule-based risk classifier.
-        (In production this feeds into the CogniSense fusion model.)
+    def _trial_to_dict(r: TrialResult) -> dict:
+        """Compact, JSON-safe view of a single antisaccade trial."""
+        def _fmt(v, nd=1, na="N/A"):
+            if v is None:
+                return na
+            if isinstance(v, float) and math.isnan(v):
+                return na
+            return round(float(v), nd) if isinstance(v, (int, float)) else v
 
-        Thresholds derived from published literature:
-          - Error rate  > 40% → elevated risk  [Crawford et al., 2002]
-          - Latency     > 350ms               [Shafiq-Antonacci et al.]
-          - RMSD        > 0.12                (clinical heuristic)
-          - Pursuit gain < 0.7                (Lisberger, 1998)
-        """
-        risk_score = 0
-        if error_rate  > 40:  risk_score += 2
-        elif error_rate > 20: risk_score += 1
-        if not math.isnan(mean_latency):
-            if mean_latency  > 350: risk_score += 2
-            elif mean_latency > 250: risk_score += 1
-        if not math.isnan(mean_rmsd):
-            if mean_rmsd  > 0.12: risk_score += 1
-        if not math.isnan(pursuit_gain):
-            if pursuit_gain < 0.7:  risk_score += 2
-            elif pursuit_gain < 0.85: risk_score += 1
-
-        if risk_score >= 5: return "High"
-        if risk_score >= 3: return "Medium"
-        return "Low"
-
-    # ── console + JSON summary ─────────────────────────────────────────────
-    def generate_summary(self, results: List[TrialResult],
-                         pursuit_gain: float) -> dict:
-        n_trials     = len(results)
-        n_errors     = sum(1 for r in results if r.is_error)
-        error_rate   = 100 * n_errors / max(n_trials, 1)
-
-        latencies    = [r.latency_ms for r in results
-                        if not r.is_error and not math.isnan(r.latency_ms)]
-        mean_latency = float(np.mean(latencies)) if latencies else float("nan")
-
-        rmsds        = [r.fixation_rmsd for r in results
-                        if not math.isnan(r.fixation_rmsd)]
-        mean_rmsd    = float(np.mean(rmsds)) if rmsds else float("nan")
-
-        risk         = self._risk(error_rate, mean_latency,
-                                  mean_rmsd, pursuit_gain)
-
-        report = {
-            "n_trials"          : n_trials,
-            "n_errors"          : n_errors,
-            "error_rate"        : f"{error_rate:.1f}%",
-            "avg_latency_ms"    : f"{mean_latency:.1f}" if not math.isnan(mean_latency)
-                                  else "N/A",
-            "stability_score"   : f"{mean_rmsd:.4f}" if not math.isnan(mean_rmsd)
-                                  else "N/A",
-            "pursuit_gain"      : f"{pursuit_gain:.3f}" if not math.isnan(pursuit_gain)
-                                  else "N/A",
-            "clinical_risk"     : risk,
-            "timestamp_utc"     : time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                time.gmtime()),
+        return {
+            "trial_id"         : r.trial_id,
+            "stimulus_side"    : r.stimulus_side,
+            "correct_side"     : r.correct_side,
+            "response"         : r.response_label,     # correct | error | no_response
+            "is_error"         : bool(r.is_error),
+            "first_saccade_dir": r.first_saccade_dir,  # left | right | none
+            "latency_ms"       : _fmt(r.latency_ms, 1),
+            "first_velocity"   : _fmt(r.first_velocity, 1),
+            "fixation_rmsd"    : _fmt(r.fixation_rmsd, 4),
+            "frames_collected" : int(r.frames_collected),
+            "head_moved"       : bool(r.head_moved),
         }
 
-        # ── console print ─────────────────────────────────────────────────
-        sep = "═" * 55
+    # ── aggregate + score ─────────────────────────────────────────────────
+    def build_session(self, results: List[TrialResult],
+                      pursuit_gain: float) -> SessionResult:
+        n_trials = len(results)
+        n_errors = sum(1 for r in results if r.is_error)
+        n_no_resp = sum(1 for r in results if r.response_label == "no_response")
+        error_rate = 100.0 * n_errors / max(n_trials, 1)
+
+        latencies = [r.latency_ms for r in results
+                     if not r.is_error and not math.isnan(r.latency_ms)]
+        mean_latency = float(np.mean(latencies)) if latencies else float("nan")
+
+        rmsds = [r.fixation_rmsd for r in results
+                 if not math.isnan(r.fixation_rmsd)]
+        mean_rmsd = float(np.mean(rmsds)) if rmsds else float("nan")
+
+        score, label, conf = BiomarkerEngine.score_and_classify(
+            error_rate, mean_latency, mean_rmsd, pursuit_gain)
+
+        return SessionResult(
+            n_trials         = n_trials,
+            n_errors         = n_errors,
+            n_no_response    = n_no_resp,
+            error_rate       = error_rate,
+            mean_latency_ms  = mean_latency,
+            mean_rmsd        = mean_rmsd,
+            pursuit_gain     = pursuit_gain,
+            score            = score,
+            class_label      = label,
+            class_confidence = conf,
+            trial_results    = list(results),
+        )
+
+    # ── console + JSON ────────────────────────────────────────────────────
+    def generate_summary(self, session: SessionResult) -> dict:
+        """
+        Build the report dict. Contains:
+          • header fields (aggregate biomarkers, score, class)
+          • per-trial array (mirrors the console print)
+        """
+        # ── per-trial ────────────────────────────────────────────────────
+        trials_block = [self._trial_to_dict(r) for r in session.trial_results]
+
+        # ── summary ──────────────────────────────────────────────────────
+        report = {
+            "header": {
+                "module"       : "CogniSense Oculomotor Diagnostic Module",
+                "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                               time.gmtime()),
+                "n_trials"     : session.n_trials,
+            },
+            "aggregate": {
+                "n_errors"        : session.n_errors,
+                "n_no_response"   : session.n_no_response,
+                "error_rate"      : f"{session.error_rate:.1f}%",
+                "avg_latency_ms"  : (f"{session.mean_latency_ms:.1f}"
+                                     if not math.isnan(session.mean_latency_ms)
+                                     else "N/A"),
+                "stability_rmsd"  : (f"{session.mean_rmsd:.4f}"
+                                     if not math.isnan(session.mean_rmsd)
+                                     else "N/A"),
+                "pursuit_gain"    : (f"{session.pursuit_gain:.3f}"
+                                     if not math.isnan(session.pursuit_gain)
+                                     else "N/A"),
+            },
+            "score": {
+                "value"      : round(session.score, 1),
+                "scale"      : "0-100 (higher = healthier)",
+                "class_label": session.class_label,
+                "confidence" : round(session.class_confidence, 2),
+                "class_bands": [
+                    {"label": "Optimal",           "range": [85, 100]},
+                    {"label": "Normal",            "range": [70, 85]},
+                    {"label": "Borderline",        "range": [55, 70]},
+                    {"label": "Mild Concern",      "range": [40, 55]},
+                    {"label": "Moderate Concern",  "range": [25, 40]},
+                    {"label": "High Concern",      "range": [0,  25]},
+                ],
+            },
+            "trials": trials_block,
+        }
+
+        # ── console print ────────────────────────────────────────────────
+        sep = "═" * 60
         print(f"\n{sep}")
         print("  CogniSense — OCULOMOTOR ASSESSMENT REPORT")
         print(sep)
-        print(f"  Trials completed    : {n_trials}")
-        print(f"  Antisaccade errors  : {n_errors}  ({error_rate:.1f}%)")
-        print(f"  Mean correct latency: {report['avg_latency_ms']} ms")
-        print(f"  Fixation stability  : RMSD = {report['stability_score']}")
-        print(f"  Smooth pursuit gain : {report['pursuit_gain']}")
+        print(f"  Trials completed      : {session.n_trials}")
+        print(f"  Antisaccade errors    : {session.n_errors}  "
+              f"({session.error_rate:.1f}%)")
+        print(f"  No-response trials    : {session.n_no_response}")
+        print(f"  Mean correct latency  : {report['aggregate']['avg_latency_ms']} ms")
+        print(f"  Fixation stability    : RMSD = "
+              f"{report['aggregate']['stability_rmsd']}")
+        print(f"  Smooth pursuit gain   : {report['aggregate']['pursuit_gain']}")
         print(f"  ─────────────────────────────────────────────────")
-        col = {"Low": "\033[92m", "Medium": "\033[93m",
-               "High": "\033[91m"}.get(risk, "")
-        rst = "\033[0m"
-        print(f"  Clinical Risk Flag  : {col}{risk}{rst}")
+        print(f"  FINAL SCORE           : {report['score']['value']} / 100")
+        print(f"  CLASSIFICATION        : {session.class_label} "
+              f"(confidence {report['score']['confidence']})")
+        print(sep)
+        print("  PER-TRIAL BREAKDOWN")
+        print(sep)
+
+        for t in trials_block:
+            lat = t["latency_ms"]
+            lat_str = f"{lat:6.1f}ms" if isinstance(lat, (int, float)) else "   N/A "
+            rmsd = t["fixation_rmsd"]
+            rmsd_str = f"{rmsd:6.4f}" if isinstance(rmsd, (int, float)) else "   N/A"
+
+            print(f"  Trial {t['trial_id']:2d} | "
+                  f"stim={t['stimulus_side']:5s} | "
+                  f"{t['response']:11s} | "
+                  f"first={t['first_saccade_dir']:5s} | "
+                  f"latency={lat_str} | "
+                  f"rmsd={rmsd_str} | "
+                  f"head_moved={t['head_moved']}")
         print(sep)
 
         return report
 
-    def save_json(self, report: dict, path: Path):
+    def save_json(self, report: dict, path: Path = SUMMARY_JSON):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(report, f, indent=2)
         print(f"[INFO] JSON report    → {path}")
 
-    # ── matplotlib gaze-path plots ─────────────────────────────────────────
-    def plot_gaze_paths(self, results: List[TrialResult],
+    # ── gaze-path plots ───────────────────────────────────────────────────
+    def plot_gaze_paths(self, session: SessionResult,
                         all_points: List[GazePoint],
-                        path: Path):
+                        path: Path = PLOT_PATH):
+        results = session.trial_results
         if not results:
             return
 
-        # Find best (no error, lowest latency) and worst (error + highest rmsd)
         no_errors = [r for r in results if not r.is_error
                      and not math.isnan(r.latency_ms)]
         errors    = [r for r in results if r.is_error]
 
-        best_trial = min(no_errors, key=lambda r: r.latency_ms,
-                         default=results[0])
+        best_trial  = min(no_errors, key=lambda r: r.latency_ms,
+                          default=results[0])
         worst_trial = max(errors, key=lambda r: r.fixation_rmsd,
                           default=results[-1])
 
@@ -140,158 +196,90 @@ class ReportGenerator:
                     if p.trial_id == tid and p.face_detected
                     and not math.isnan(p.norm_x)]
 
-        fig = plt.figure(figsize=(16, 9), facecolor="#111111")
-        gs  = gridspec.GridSpec(2, 3, figure=fig,
-                                wspace=0.35, hspace=0.45)
+        fig = plt.figure(figsize=(15, 8), facecolor="#111111")
+        gs  = gridspec.GridSpec(2, 2, figure=fig, wspace=0.3, hspace=0.4)
 
-        # ── helper ────────────────────────────────────────────────────────
-        def _plot_path(ax, pts: List[GazePoint], title: str, colour: str):
+        def _plot_path(ax, pts, title, colour):
             if not pts:
                 ax.text(0.5, 0.5, "No valid data", ha="center", va="center",
                         transform=ax.transAxes, color="white")
                 return
-            xs  = [p.norm_x for p in pts]
-            ys  = [p.norm_y for p in pts]
-            ts  = np.linspace(0, 1, len(xs))
-            sc  = ax.scatter(xs, ys, c=ts, cmap="plasma",
-                             s=15, alpha=0.8, zorder=3)
+            xs = [p.norm_x for p in pts]
+            ys = [p.norm_y for p in pts]
+            ts = np.linspace(0, 1, len(xs))
+            sc = ax.scatter(xs, ys, c=ts, cmap="plasma", s=15, alpha=0.8,
+                            zorder=3)
             ax.plot(xs, ys, color=colour, alpha=0.4, linewidth=1, zorder=2)
-            # start / end markers
-            ax.scatter([xs[0]],  [ys[0]],  color="lime",   s=80, zorder=5,
+            ax.scatter([xs[0]], [ys[0]], color="lime", s=80, zorder=5,
                        label="Start")
-            ax.scatter([xs[-1]], [ys[-1]], color="red",    s=80, zorder=5,
+            ax.scatter([xs[-1]], [ys[-1]], color="red", s=80, zorder=5,
                        label="End")
             ax.axhline(0, color="#444", linewidth=0.7)
             ax.axvline(0, color="#444", linewidth=0.7)
-            ax.set_xlim(-1, 1)
-            ax.set_ylim(-1, 1)
+            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1)
             ax.set_title(title, color="white", fontsize=10, pad=6)
-            ax.set_xlabel("Normalised Gaze X", color="#aaa", fontsize=8)
-            ax.set_ylabel("Normalised Gaze Y", color="#aaa", fontsize=8)
+            ax.set_xlabel("Norm Gaze X", color="#aaa", fontsize=8)
+            ax.set_ylabel("Norm Gaze Y", color="#aaa", fontsize=8)
             ax.set_facecolor("#1a1a2e")
             ax.tick_params(colors="#888")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#444")
+            for sp in ax.spines.values():
+                sp.set_edgecolor("#444")
             ax.legend(fontsize=7, labelcolor="white",
                       facecolor="#222", edgecolor="#555")
             plt.colorbar(sc, ax=ax, label="Time →").ax.yaxis.label.set_color(
                 "#aaa")
 
-        # ── time-series gaze-x ────────────────────────────────────────────
-        def _plot_timeseries(ax, pts: List[GazePoint], trial: TrialResult,
-                             colour: str):
+        def _plot_timeseries(ax, pts, trial, colour):
             if not pts:
                 return
-            t0  = pts[0].timestamp_s
-            ts  = [(p.timestamp_s - t0) * 1000 for p in pts]
-            xs  = [p.norm_x for p in pts]
-
-            # shade fixation vs stimulus
-            fix_end = FIXATION_DURATION_S * 1000
-            ax.axvspan(0, fix_end, alpha=0.12, color="cyan",
-                       label="Fixation")
-            ax.axvspan(fix_end,
-                       (FIXATION_DURATION_S + RESPONSE_WINDOW_S) * 1000,
-                       alpha=0.07, color="yellow", label="Response")
+            t0 = pts[0].timestamp_s
+            ts = [(p.timestamp_s - t0) * 1000 for p in pts]
+            xs = [p.norm_x for p in pts]
             ax.plot(ts, xs, color=colour, linewidth=1.2, alpha=0.9)
             ax.axhline(0, color="#444", linewidth=0.7)
-
-            # Stimulus direction marker
-            stim_y = 0.8 if trial.stimulus_side == "right" else -0.8
-            ax.annotate(f"Stim→{trial.stimulus_side}",
-                        xy=(fix_end, stim_y), fontsize=7,
-                        color="orange", xycoords="data")
-
-            ax.set_title(
-                f"Trial {trial.trial_id} — Gaze X vs Time\n"
-                f"({'ERROR' if trial.is_error else f'Latency {trial.latency_ms:.0f}ms'})",
-                color="white", fontsize=9, pad=4)
+            outcome = trial.response_label.upper()
+            ax.set_title(f"Trial {trial.trial_id} — Gaze X vs Time  ({outcome})",
+                         color="white", fontsize=9, pad=4)
             ax.set_xlabel("Time (ms)", color="#aaa", fontsize=8)
             ax.set_ylabel("Norm Gaze X", color="#aaa", fontsize=8)
             ax.set_facecolor("#1a1a2e")
             ax.tick_params(colors="#888")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#444")
-            ax.legend(fontsize=7, labelcolor="white",
-                      facecolor="#222", edgecolor="#555")
+            for sp in ax.spines.values():
+                sp.set_edgecolor("#444")
 
-        # ── velocity histogram ────────────────────────────────────────────
-        def _plot_velocity_hist(ax, results: List[TrialResult]):
-            vels = [r.first_velocity for r in results if r.first_velocity > 0]
-            if not vels:
-                return
-            ax.hist(vels, bins=10, color="#5588ff", edgecolor="#222",
-                    alpha=0.85)
-            ax.axvline(SACCADE_VELOCITY_DEG_S, color="red",
-                       linewidth=1.5, linestyle="--",
-                       label=f"Threshold {SACCADE_VELOCITY_DEG_S}°/s")
-            ax.set_title("First Saccade Velocity Distribution",
-                         color="white", fontsize=9, pad=4)
-            ax.set_xlabel("Velocity (°/s)", color="#aaa", fontsize=8)
-            ax.set_ylabel("Count",         color="#aaa", fontsize=8)
-            ax.set_facecolor("#1a1a2e")
-            ax.tick_params(colors="#888")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#444")
-            ax.legend(fontsize=7, labelcolor="white",
-                      facecolor="#222", edgecolor="#555")
-
-        # ── error timeline ────────────────────────────────────────────────
-        def _plot_error_timeline(ax, results: List[TrialResult]):
-            tids  = [r.trial_id for r in results]
-            errs  = [1 if r.is_error else 0 for r in results]
-            cols  = ["#e53935" if e else "#43a047" for e in errs]
+        def _plot_error_timeline(ax, results):
+            tids = [r.trial_id for r in results]
+            errs = [1 if r.is_error else 0 for r in results]
+            cols = ["#e53935" if e else "#43a047" for e in errs]
             ax.bar(tids, errs, color=cols, edgecolor="#111", width=0.7)
-            ax.set_title("Error Timeline per Trial",
-                         color="white", fontsize=9, pad=4)
-            ax.set_xlabel("Trial ID",    color="#aaa", fontsize=8)
+            ax.set_title("Error Timeline per Trial", color="white",
+                         fontsize=9, pad=4)
+            ax.set_xlabel("Trial ID", color="#aaa", fontsize=8)
             ax.set_ylabel("Error (1=Yes)", color="#aaa", fontsize=8)
             ax.set_ylim(-0.1, 1.4)
             ax.set_facecolor("#1a1a2e")
             ax.tick_params(colors="#888")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#444")
+            for sp in ax.spines.values():
+                sp.set_edgecolor("#444")
 
-        # ── RMSD per trial ────────────────────────────────────────────────
-        def _plot_rmsd(ax, results: List[TrialResult]):
-            tids  = [r.trial_id for r in results]
-            rmsds = [r.fixation_rmsd if not math.isnan(r.fixation_rmsd) else 0
-                     for r in results]
-            ax.plot(tids, rmsds, "o-", color="#ffab40",
-                    linewidth=1.5, markersize=5)
-            ax.axhline(0.12, color="red", linewidth=1.2, linestyle="--",
-                       label="Risk threshold 0.12")
-            ax.set_title("Fixation RMSD per Trial",
-                         color="white", fontsize=9, pad=4)
-            ax.set_xlabel("Trial ID",    color="#aaa", fontsize=8)
-            ax.set_ylabel("RMSD",        color="#aaa", fontsize=8)
-            ax.set_facecolor("#1a1a2e")
-            ax.tick_params(colors="#888")
-            for spine in ax.spines.values():
-                spine.set_edgecolor("#444")
-            ax.legend(fontsize=7, labelcolor="white",
-                      facecolor="#222", edgecolor="#555")
-
-        # ── draw panels ────────────────────────────────────────────────────
         best_pts  = get_pts(best_trial.trial_id)
         worst_pts = get_pts(worst_trial.trial_id)
 
         _plot_path(fig.add_subplot(gs[0, 0]), best_pts,
                    f"Gaze Path — Best Trial #{best_trial.trial_id}", "#4fc3f7")
-        _plot_path(fig.add_subplot(gs[1, 0]), worst_pts,
-                   f"Gaze Path — Worst Trial #{worst_trial.trial_id}", "#ef9a9a")
         _plot_timeseries(fig.add_subplot(gs[0, 1]), best_pts,
                          best_trial, "#4fc3f7")
-        _plot_timeseries(fig.add_subplot(gs[1, 1]), worst_pts,
-                         worst_trial, "#ef9a9a")
-        _plot_velocity_hist(fig.add_subplot(gs[0, 2]), results)
-        _plot_error_timeline(fig.add_subplot(gs[1, 2]), results)
+        _plot_path(fig.add_subplot(gs[1, 0]), worst_pts,
+                   f"Gaze Path — Worst Trial #{worst_trial.trial_id}", "#ef9a9a")
+        _plot_error_timeline(fig.add_subplot(gs[1, 1]), results)
 
-        fig.suptitle("CogniSense — Oculomotor Biomarker Dashboard",
-                     color="white", fontsize=14, y=0.98)
+        fig.suptitle(
+            f"CogniSense — Score {session.score:.0f}/100  ·  "
+            f"{session.class_label}",
+            color="white", fontsize=14, y=0.98)
 
         path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(path, dpi=150, bbox_inches="tight",
                     facecolor=fig.get_facecolor())
         plt.close(fig)
-        print(f"[INFO] Gaze-path plot → {path}")
+        print(f"[INFO] Dashboard plot → {path}")

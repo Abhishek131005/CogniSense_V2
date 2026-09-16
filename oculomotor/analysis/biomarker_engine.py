@@ -1,7 +1,7 @@
 """
 ================================================================================
  CogniSense — Oculomotor Diagnostic Module
- BiomarkerEngine - Clinical biomarker calculations
+ BiomarkerEngine — clinical biomarker calculations + scoring
 ================================================================================
 """
 
@@ -13,24 +13,11 @@ from ..data.data_containers import GazePoint
 
 
 class BiomarkerEngine:
-    """
-    All clinical biomarker maths.
-
-    Designed to operate on a list[GazePoint] for one trial.
-    """
 
     # ── velocity ──────────────────────────────────────────────────────────
     @staticmethod
     def angular_velocity(p1: GazePoint, p2: GazePoint,
                          fov_deg: float = CAMERA_FOV_DEG) -> float:
-        """
-        Approximate angular velocity in °/s between two gaze points.
-
-        norm_x spans ≈ ±1 across the screen; screen subtends fov_deg
-        horizontally at a normal viewing distance.
-        Delta in norm units × fov_deg/2 → degrees of visual angle.
-        Divide by elapsed time → °/s.
-        """
         dt = p2.timestamp_s - p1.timestamp_s
         if dt <= 0:
             return 0.0
@@ -44,18 +31,12 @@ class BiomarkerEngine:
     def detect_saccades(cls, points: List[GazePoint],
                         threshold: float = SACCADE_VELOCITY_DEG_S
                         ) -> List[Tuple[int, float, str]]:
-        """
-        Scan a sequence of GazePoints for saccade events.
-
-        Returns list of (frame_index, velocity_deg_s, direction)
-        where direction is 'left' or 'right'.
-        """
         events = []
         for i in range(1, len(points)):
             v = cls.angular_velocity(points[i - 1], points[i])
             if v > threshold:
-                direction = "right" if points[i].norm_x > points[i - 1].norm_x \
-                            else "left"
+                direction = ("right" if points[i].norm_x > points[i - 1].norm_x
+                             else "left")
                 events.append((i, v, direction))
         return events
 
@@ -65,47 +46,44 @@ class BiomarkerEngine:
                        stimulus_side: str,
                        points: List[GazePoint],
                        error_window_ms: float = ERROR_WINDOW_MS
-                       ) -> Tuple[bool, float, float]:
+                       ) -> Tuple[bool, float, float, str, str]:
         """
-        Returns (is_error, latency_ms, first_saccade_velocity).
+        Returns (is_error, latency_ms, first_saccade_velocity,
+                 first_saccade_dir, response_label).
 
-        Logic
-        ─────
-        1. Collect all saccades within `error_window_ms` after stim onset.
-        2. If the FIRST saccade is TOWARD the stimulus  → error.
-        3. Latency = time from stim onset to first CORRECT saccade.
+        response_label ∈ {"correct", "error", "no_response"}
         """
-        error_window_s   = error_window_ms / 1000.0
-        correct_side     = "left" if stimulus_side == "right" else "right"
+        error_window_s = error_window_ms / 1000.0
+        correct_side   = "left" if stimulus_side == "right" else "right"
 
         stim_points = [p for p in points if p.timestamp_s >= stim_onset_s]
         saccades    = cls.detect_saccades(stim_points)
 
         if not saccades:
-            # No saccade detected ─ count as error (no response)
-            return True, float("nan"), 0.0
+            return True, float("nan"), 0.0, "none", "no_response"
 
+        # Only consider saccades inside the error window for the *first* one
         first_idx, first_vel, first_dir = saccades[0]
-        t_first = stim_points[first_idx].timestamp_s
+        t_first = stim_points[first_idx].timestamp_s - stim_onset_s
+        if t_first > error_window_s:
+            # First saccade too late — treat as no response.
+            return True, float("nan"), first_vel, first_dir, "no_response"
 
-        is_error = first_dir == stimulus_side   # moved TOWARD dot = error
+        is_error = (first_dir == stimulus_side)
+        response_label = "error" if is_error else "correct"
 
-        # Find first correct saccade for latency
+        # latency = time to first CORRECT saccade
         latency_ms = float("nan")
-        for idx, vel, direction in saccades:
+        for idx, _vel, direction in saccades:
             if direction == correct_side:
-                latency_ms = (stim_points[idx].timestamp_s - stim_onset_s) * 1000
+                latency_ms = (stim_points[idx].timestamp_s - stim_onset_s) * 1000.0
                 break
 
-        return is_error, latency_ms, first_vel
+        return is_error, latency_ms, first_vel, first_dir, response_label
 
     # ── fixation stability ────────────────────────────────────────────────
     @staticmethod
     def fixation_rmsd(points: List[GazePoint]) -> float:
-        """
-        Root Mean Square Deviation of (norm_x, norm_y) over the
-        fixation window — measures how steady gaze is on the cross.
-        """
         if len(points) < 2:
             return float("nan")
         xs = np.array([p.norm_x for p in points])
@@ -118,12 +96,64 @@ class BiomarkerEngine:
     @staticmethod
     def pursuit_gain(eye_velocities: List[float],
                      target_velocities: List[float]) -> float:
-        """
-        Gaze gain = mean(|eye_vel|) / mean(|target_vel|).
-        Healthy adults: ≈ 0.9–1.0; AD patients often show < 0.7.
-        """
         ev = np.array(eye_velocities)
         tv = np.array(target_velocities)
-        if tv.mean() < 1e-6:
+        if tv.size == 0 or tv.mean() < 1e-6:
             return float("nan")
         return float(np.abs(ev).mean() / np.abs(tv).mean())
+
+    # ── NEW: 0–100 score + 6-class label ──────────────────────────────────
+    @staticmethod
+    def score_and_classify(error_rate: float,
+                           mean_latency_ms: float,
+                           mean_rmsd: float,
+                           pursuit_gain: float
+                           ) -> Tuple[float, str, float]:
+        """
+        Combine biomarkers into:
+          • score       ∈ [0, 100]  (higher = better / healthier)
+          • class_label ∈ one of six bands
+          • confidence  ∈ [0, 1]    (how far from the nearest class boundary)
+
+        Sub-scores are each mapped to [0,1] (1 = healthy) then averaged.
+        """
+        # error rate: 0 % → 1.0 ; 60 % → 0.0
+        if math.isnan(error_rate):
+            s_err = 0.5
+        else:
+            s_err = max(0.0, min(1.0, 1.0 - (error_rate / 60.0)))
+
+        # latency: 200 ms → 1.0 ; 600 ms → 0.0
+        if math.isnan(mean_latency_ms):
+            s_lat = 0.5
+        else:
+            s_lat = max(0.0, min(1.0, (600.0 - mean_latency_ms) / 400.0))
+
+        # rmsd: 0.03 → 1.0 ; 0.25 → 0.0
+        if math.isnan(mean_rmsd):
+            s_rms = 0.5
+        else:
+            s_rms = max(0.0, min(1.0, (0.25 - mean_rmsd) / 0.22))
+
+        # pursuit gain: 1.0 → 1.0 ; 0.5 → 0.0
+        if math.isnan(pursuit_gain):
+            s_pur = 0.5
+        else:
+            s_pur = max(0.0, min(1.0, (pursuit_gain - 0.5) / 0.5))
+
+        score = 100.0 * (0.35 * s_err + 0.25 * s_lat +
+                         0.15 * s_rms + 0.25 * s_pur)
+
+        # Six clinically-meaningful bands
+        if   score >= 85: label, lo, hi = "Optimal",        85, 100
+        elif score >= 70: label, lo, hi = "Normal",         70, 85
+        elif score >= 55: label, lo, hi = "Borderline",     55, 70
+        elif score >= 40: label, lo, hi = "Mild Concern",   40, 55
+        elif score >= 25: label, lo, hi = "Moderate Concern", 25, 40
+        else:             label, lo, hi = "High Concern",   0,  25
+
+        # Confidence: distance to nearest band edge, normalised
+        edge = min(score - lo, hi - score)
+        span = max(hi - lo, 1)
+        conf = min(1.0, 0.5 + (edge / span) * 0.5)   # 0.5 … 1.0
+        return float(score), label, float(conf)

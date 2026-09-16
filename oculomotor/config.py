@@ -1,72 +1,86 @@
 """
 ================================================================================
  CogniSense — Oculomotor Diagnostic Module
- Global constants & configuration
+ Configuration constants
 ================================================================================
 """
 
 from pathlib import Path
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  MediaPipe landmark indices
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Paths ─────────────────────────────────────────────────────────────────────
+BASE_DIR         = Path(__file__).resolve().parent
+OUTPUT_DIR       = BASE_DIR / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+CALIBRATION_LOG  = OUTPUT_DIR / "calibration.json"
+SUMMARY_JSON     = OUTPUT_DIR / "summary.json"
+PLOT_PATH        = OUTPUT_DIR / "dashboard.png"
 
-# Left iris  : 468, 469, 470, 471, 472   (centre + 4 cardinal boundary pts)
-# Right iris : 473, 474, 475, 476, 477
-# Left eye corners  : inner=133 , outer=33
-# Right eye corners : inner=362 , outer=263
-Liris_CENTRE      = 468
-Riris_CENTRE      = 473
-Liris_INDICES     = [468, 469, 470, 471, 472]
-Riris_INDICES     = [473, 474, 475, 476, 477]
-L_INNER_CORNER    = 133
-L_OUTER_CORNER    = 33
-R_INNER_CORNER    = 362
-R_OUTER_CORNER    = 263
+# ── Camera ────────────────────────────────────────────────────────────────────
+CAMERA_FOV_DEG   = 60.0          # horizontal FOV of the webcam (degrees)
 
-# full index lists (5 points per iris for centroid averaging)
-LIRS_INDICES_FULL = [468, 469, 470, 471, 472]
-RIRS_INDICES_FULL = [473, 474, 475, 476, 477]
+# ── Calibration ───────────────────────────────────────────────────────────────
+CALIBRATION_DURATION_S = 5.0
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Task parameters
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Antisaccade task ──────────────────────────────────────────────────────────
+ANTISACCADE_TRIALS     = 10
+FIXATION_DURATION_S    = 1.5
+RESPONSE_WINDOW_S      = 1.5
+STIMULUS_OFFSET_PX     = 300
+SACCADE_VELOCITY_DEG_S = 30.0    # threshold to call something a saccade
+ERROR_WINDOW_MS        = 700.0   # first saccade after stimulus decides error
 
-ANTISACCADE_TRIALS      = 8        # number of antisaccade trials
-FIXATION_DURATION_S     = 3        # fixation cross shown for N seconds
-RESPONSE_WINDOW_S       = 2.0         # data-recording window after stimulus
-STIMULUS_OFFSET_PX      = 400         # horizontal offset from screen centre
-CALIBRATION_DURATION_S  = 5.0         # neutral-look calibration window
-SACCADE_VELOCITY_DEG_S  = 30.0        # velocity threshold (°/s) for a saccade
-ERROR_WINDOW_MS         = 500         # window after stimulus to detect errors
-CAMERA_FOV_DEG          = 60.0        # approximate horizontal camera FOV (°)
+# ── Smooth pursuit task ───────────────────────────────────────────────────────
+PURSUIT_CYCLES         = 5
+PURSUIT_DURATION_S     = 10.0
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Smooth pursuit
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Head-lock ─────────────────────────────────────────────────────────────────
+HEAD_BOX_W_FRAC        = 0.32     # fraction of frame width
+HEAD_BOX_H_FRAC        = 0.42     # fraction of frame height
+HEAD_BOX_TOLERANCE     = 0.05     # slack before we consider head "out"
+HEAD_CENTER_MIN_HOLD_S = 0.6      # must hold inside box this long to begin trial
 
-PURSUIT_CYCLES          = 3           # horizontal sinusoidal cycles
-PURSUIT_DURATION_S      = 6.0         # total pursuit task duration
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Output paths
-# ══════════════════════════════════════════════════════════════════════════════
-
-OUT_DIR                 = Path("oculomotor_output")
-RAW_CSV                 = OUT_DIR / "raw_gaze_timeseries.csv"
-ANTISACCADE_CSV         = OUT_DIR / "antisaccade_raw_data.csv"
-SUMMARY_JSON            = OUT_DIR / "oculomotor_report.json"
-PLOT_PATH               = OUT_DIR / "gaze_path_trials.png"
-CALIBRATION_LOG         = OUT_DIR / "calibration_baseline.json"
+# ── Colours (BGR) ─────────────────────────────────────────────────────────────
+COL_BG          = (18, 18, 32)
+COL_CROSS       = (230, 230, 230)
+COL_STIMULUS    = (60, 60, 230)   # red
+COL_PURSUIT_DOT = (80, 230, 80)   # green
+COL_TEXT        = (240, 240, 240)
+COL_GOOD        = (80, 200, 80)
+COL_WARN        = (60, 180, 240)
+COL_BAD         = (60, 60, 230)
+COL_GAZE        = (255, 255, 0)   # cyan — live gaze estimate
+COL_TARGET      = (80, 230, 80)   # green — pursuit target
+COL_HEADBOX     = (180, 180, 180)
+COL_HEADBOX_OK  = (80, 220, 80)
+COL_HEADBOX_BAD = (60, 60, 230)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  UI colours (BGR)
+# MediaPipe FaceMesh landmark indices (478-landmark iris-refined model)
 # ══════════════════════════════════════════════════════════════════════════════
 
-COL_BG          = (15,  15,  15)
-COL_CROSS       = (220, 220, 220)
-COL_STIMULUS    = (30,  30,  220)    # red dot
-COL_PURSUIT_DOT = (30,  220,  30)    # green dot
-COL_TEXT        = (200, 200, 200)
-COL_WARN        = (30,   80, 220)    # orange for warnings
-COL_GOOD        = (30,  180,  30)    # green for ok status
+# ── Eye corners ───────────────────────────────────────────────────────────────
+# Left eye = subject's LEFT eye (image-right in a mirrored frame)
+# Right eye = subject's RIGHT eye (image-left in a mirrored frame)
+L_INNER_CORNER = 133       # left eye, inner corner (toward nose)
+L_OUTER_CORNER = 33        # left eye, outer corner (toward ear)
+R_INNER_CORNER = 362       # right eye, inner corner (toward nose)
+R_OUTER_CORNER = 263       # right eye, outer corner (toward ear)
+
+# ── Iris landmark indices (refine_landmarks=True) ─────────────────────────────
+# MediaPipe adds 10 iris landmarks: 468–472 = LEFT iris, 473–477 = RIGHT iris.
+# Each iris is a 5-point ring: centre is index 468 (left) / 473 (right).
+L_IRIS_CENTER  = 468
+R_IRIS_CENTER  = 473
+
+LIRS_INDICES_FULL = [468, 469, 470, 471, 472]   # left iris ring
+RIRS_INDICES_FULL = [473, 474, 475, 476, 477]   # right iris ring
+
+# ── Face bounding landmarks (for head-pose fallback / box drawing) ────────────
+NOSE_TIP       = 1
+CHIN           = 152
+FOREHEAD_TOP   = 10
+LEFT_CHEEK     = 234
+RIGHT_CHEEK    = 454
+
+# ── Optional: debug flag ──────────────────────────────────────────────────────
+DEBUG_MODE     = False

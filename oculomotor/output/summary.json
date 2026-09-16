@@ -1,0 +1,197 @@
+{
+  "header": {
+    "module": "CogniSense Oculomotor Diagnostic Module",
+    "timestamp_utc": "2026-09-16T14:32:31Z",
+    "n_trials": 10
+  },
+  "aggregate": {
+    "n_errors": 9,
+    "n_no_response": 5,
+    "error_rate": "90.0%",
+    "avg_latency_ms": "116.8",
+    "stability_rmsd": "0.0486",
+    "pursuit_gain": "0.073"
+  },
+  "score": {
+    "value": 38.7,
+    "scale": "0-100 (higher = healthier)",
+    "class_label": "Moderate Concern",
+    "confidence": 0.54,
+    "class_bands": [
+      {
+        "label": "Optimal",
+        "range": [
+          85,
+          100
+        ]
+      },
+      {
+        "label": "Normal",
+        "range": [
+          70,
+          85
+        ]
+      },
+      {
+        "label": "Borderline",
+        "range": [
+          55,
+          70
+        ]
+      },
+      {
+        "label": "Mild Concern",
+        "range": [
+          40,
+          55
+        ]
+      },
+      {
+        "label": "Moderate Concern",
+        "range": [
+          25,
+          40
+        ]
+      },
+      {
+        "label": "High Concern",
+        "range": [
+          0,
+          25
+        ]
+      }
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": 1,
+      "stimulus_side": "left",
+      "correct_side": "right",
+      "response": "no_response",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": "N/A",
+      "first_velocity": 52.3,
+      "fixation_rmsd": 0.0196,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 2,
+      "stimulus_side": "left",
+      "correct_side": "right",
+      "response": "no_response",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": "N/A",
+      "first_velocity": 30.1,
+      "fixation_rmsd": 0.0931,
+      "frames_collected": 91,
+      "head_moved": false
+    },
+    {
+      "trial_id": 3,
+      "stimulus_side": "left",
+      "correct_side": "right",
+      "response": "no_response",
+      "is_error": true,
+      "first_saccade_dir": "none",
+      "latency_ms": "N/A",
+      "first_velocity": 0.0,
+      "fixation_rmsd": 0.0237,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 4,
+      "stimulus_side": "right",
+      "correct_side": "left",
+      "response": "correct",
+      "is_error": false,
+      "first_saccade_dir": "left",
+      "latency_ms": 116.8,
+      "first_velocity": 30.9,
+      "fixation_rmsd": 0.0175,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 5,
+      "stimulus_side": "left",
+      "correct_side": "right",
+      "response": "no_response",
+      "is_error": true,
+      "first_saccade_dir": "none",
+      "latency_ms": "N/A",
+      "first_velocity": 0.0,
+      "fixation_rmsd": 0.0221,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 6,
+      "stimulus_side": "right",
+      "correct_side": "left",
+      "response": "error",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": "N/A",
+      "first_velocity": 41.1,
+      "fixation_rmsd": 0.0224,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 7,
+      "stimulus_side": "right",
+      "correct_side": "left",
+      "response": "no_response",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": "N/A",
+      "first_velocity": 43.9,
+      "fixation_rmsd": 0.094,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 8,
+      "stimulus_side": "right",
+      "correct_side": "left",
+      "response": "error",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": 668.4,
+      "first_velocity": 109.2,
+      "fixation_rmsd": 0.0922,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 9,
+      "stimulus_side": "right",
+      "correct_side": "left",
+      "response": "error",
+      "is_error": true,
+      "first_saccade_dir": "right",
+      "latency_ms": "N/A",
+      "first_velocity": 41.4,
+      "fixation_rmsd": 0.007,
+      "frames_collected": 90,
+      "head_moved": false
+    },
+    {
+      "trial_id": 10,
+      "stimulus_side": "left",
+      "correct_side": "right",
+      "response": "error",
+      "is_error": true,
+      "first_saccade_dir": "left",
+      "latency_ms": 759.0,
+      "first_velocity": 32.4,
+      "fixation_rmsd": 0.0941,
+      "frames_collected": 90,
+      "head_moved": false
+    }
+  ]
+}
