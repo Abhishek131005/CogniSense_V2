@@ -113,6 +113,59 @@ class AntisaccadeTask:
         cx = w // 2
         return cx - STIMULUS_OFFSET_PX if side == "left" else cx + STIMULUS_OFFSET_PX
 
+
+        # ── calibration ready screen ──────────────────────────────────────────
+    def _show_calibration_ready(self, cap):
+        """
+        Wait for the subject to press SPACE before starting calibration.
+        Gives them time to settle, remove glasses, etc.
+        """
+        lines = [
+            "GET READY FOR CALIBRATION",
+            "",
+            "In a moment you will see a white dot in the centre.",
+            "Please look at the dot and keep your HEAD still",
+            "inside the box shown in the top-right preview.",
+            "",
+            "Calibration takes about 5 seconds.",
+            "",
+            "Press SPACE when you are ready.",
+        ]
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.flip(frame, 1)
+            h, w  = frame.shape[:2]
+            canvas = self._ui.blank(w, h)
+
+            y0 = h // 2 - len(lines) * 28 // 2
+            for i, line in enumerate(lines):
+                sz    = 0.9 if i == 0 else 0.65
+                col   = (255, 200, 50) if i == 0 else COL_TEXT
+                (tw, _), _ = cv2.getTextSize(line, FONT, sz, 2)
+                cx_   = (w - tw) // 2
+                cv2.putText(canvas, line, (cx_, y0 + i * 35),
+                            FONT, sz, col, 2, cv2.LINE_AA)
+
+            lm = self.tracker.process_frame(frame)
+            hx = hy = float("nan")
+            inside = False
+            if lm:
+                hx, hy = FaceMeshTracker.head_center(lm)
+                inside = self._head_inside_box(hx, hy)
+
+            self._ui.camera_preview_with_headlock(
+                canvas, frame, hx, hy, inside,
+                face_detected=(lm is not None))
+
+            cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
+            key = cv2.waitKey(30)
+            if key == 32:    # SPACE
+                break
+            if key == 27:    # ESC
+                return False
+        return True
     # ── calibration ───────────────────────────────────────────────────────
     def run_calibration(self, cap):
         print("[INFO] Starting calibration...")
@@ -390,8 +443,8 @@ class AntisaccadeTask:
         banner_col = {"correct": COL_GOOD, "error": COL_BAD,
                       "no_response": COL_WARN}[resp_label]
         banner_txt = {"correct": "CORRECT  ✓",
-                      "error"  : "ERROR  ✗",
-                      "no_response": "NO RESPONSE"}[resp_label]
+                      "error"  : "WRONG SIDE  ✗",
+                      "no_response": "NO EYE MOVEMENT DETECTED"}[resp_label]
 
         fb_end = time.time() + 0.8
         while time.time() < fb_end:
@@ -427,6 +480,8 @@ class AntisaccadeTask:
         cv2.setWindowProperty("CogniSense — Oculomotor Assessment",
                               cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         try:
+            if not self._show_calibration_ready(cap):
+                return
             self.run_calibration(cap)
             self._show_instructions(cap)
 
