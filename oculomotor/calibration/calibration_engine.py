@@ -6,6 +6,7 @@
 """
 
 import json
+import math
 from typing import Tuple
 import numpy as np
 from ..config import CALIBRATION_LOG
@@ -27,9 +28,12 @@ class CalibrationEngine:
 
     def add_sample(self, nx: float, ny: float,
                    hx: float = float("nan"), hy: float = float("nan")):
-        self._samples_x.append(nx)
-        self._samples_y.append(ny)
-        if not np.isnan(hx):
+        # Only keep valid samples — otherwise a single bad frame poisons
+        # the median and everything downstream becomes NaN.
+        if not math.isnan(nx) and not math.isnan(ny):
+            self._samples_x.append(nx)
+            self._samples_y.append(ny)
+        if not math.isnan(hx) and not math.isnan(hy):
             self._head_x.append(hx)
             self._head_y.append(hy)
 
@@ -47,7 +51,9 @@ class CalibrationEngine:
             self.calibrated = True
 
     def correct(self, nx: float, ny: float) -> Tuple[float, float]:
-        return nx - self.baseline_x, ny - self.baseline_y
+        cx = nx - self.baseline_x if not math.isnan(nx) else float("nan")
+        cy = ny - self.baseline_y if not math.isnan(ny) else float("nan")
+        return cx, cy
 
     def save(self):
         data = {

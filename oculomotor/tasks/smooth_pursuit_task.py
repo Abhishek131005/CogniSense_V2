@@ -13,7 +13,7 @@ import numpy as np
 
 from ..config import (
     PURSUIT_CYCLES, PURSUIT_DURATION_S, CAMERA_FOV_DEG,
-    COL_TEXT, COL_WARN, COL_GOOD,
+    COL_TEXT, COL_WARN, COL_GOOD, COL_GAZE,
     HEAD_CENTER_MIN_HOLD_S,
 )
 from ..data.data_containers import GazePoint
@@ -173,25 +173,29 @@ class SmoothPursuitTask:
                 if lm:
                     nx, ny, rlx, rly = FaceMeshTracker.extract_gaze(lm, w, h)
                     nx, ny = self.cal.correct(nx, ny)
-                    gaze_norm = nx
-                    gp = GazePoint(now, -1, "pursuit", "none",
-                                   nx, ny, rlx, rly, True,
-                                   head_x=hx, head_y=hy, head_inside=inside)
-                    self.pursuit_pts.append(gp)
-                    self._ui.gaze_dot(canvas, nx, ny, colour=(255, 255, 0))
+                    
+                    # Only treat point as valid if BOTH coordinates are non-NaN
+                    if not math.isnan(nx) and not math.isnan(ny):
+                        gaze_norm = nx
+                        gp = GazePoint(now, -1, "pursuit", "none",
+                                       nx, ny, rlx, rly, True,
+                                       head_x=hx, head_y=hy, head_inside=inside)
+                        self.pursuit_pts.append(gp)
+                        self._ui.gaze_dot(canvas, nx, ny, colour=COL_GAZE)
 
-                    if prev_nx is not None and prev_t is not None and prev_tx is not None:
-                        dt = now - prev_t
-                        if dt > 0:
-                            e_vel = (nx - prev_nx) / dt * (CAMERA_FOV_DEG / 2)
-                            t_vel = (tx_norm - (prev_tx - w // 2) / (w // 2)) \
-                                    / dt * (CAMERA_FOV_DEG / 2)
-                            eye_vels.append(e_vel)
-                            target_vels.append(t_vel)
+                        if prev_nx is not None and prev_t is not None and prev_tx is not None:
+                            dt = now - prev_t
+                            if dt > 0:
+                                e_vel = (nx - prev_nx) / dt * (CAMERA_FOV_DEG / 2)
+                                t_vel = (tx_norm - (prev_tx - w // 2) / (w // 2)) \
+                                        / dt * (CAMERA_FOV_DEG / 2)
+                                if not math.isnan(e_vel) and not math.isnan(t_vel):
+                                    eye_vels.append(e_vel)
+                                    target_vels.append(t_vel)
 
-                    prev_nx = nx
-                    prev_tx = tx
-                    prev_t  = now
+                        prev_nx = nx
+                        prev_tx = tx
+                        prev_t  = now
 
                 # camera preview with head box + marker
                 self._ui.camera_preview_with_headlock(

@@ -21,6 +21,12 @@ class BiomarkerEngine:
         dt = p2.timestamp_s - p1.timestamp_s
         if dt <= 0:
             return 0.0
+
+        # Skip frames with missing gaze — otherwise NaN poisons everything
+        if (math.isnan(p1.norm_x) or math.isnan(p1.norm_y) or
+                math.isnan(p2.norm_x) or math.isnan(p2.norm_y)):
+            return 0.0
+
         dx_deg = (p2.norm_x - p1.norm_x) * (fov_deg / 2.0)
         dy_deg = (p2.norm_y - p1.norm_y) * (fov_deg / 2.0)
         dist   = math.hypot(dx_deg, dy_deg)
@@ -84,10 +90,12 @@ class BiomarkerEngine:
     # ── fixation stability ────────────────────────────────────────────────
     @staticmethod
     def fixation_rmsd(points: List[GazePoint]) -> float:
-        if len(points) < 2:
+        valid = [p for p in points
+                 if not math.isnan(p.norm_x) and not math.isnan(p.norm_y)]
+        if len(valid) < 2:
             return float("nan")
-        xs = np.array([p.norm_x for p in points])
-        ys = np.array([p.norm_y for p in points])
+        xs = np.array([p.norm_x for p in valid])
+        ys = np.array([p.norm_y for p in valid])
         rmsd_x = np.sqrt(np.mean((xs - xs.mean()) ** 2))
         rmsd_y = np.sqrt(np.mean((ys - ys.mean()) ** 2))
         return float(math.hypot(rmsd_x, rmsd_y))
@@ -145,12 +153,12 @@ class BiomarkerEngine:
                          0.15 * s_rms + 0.25 * s_pur)
 
         # Six clinically-meaningful bands
-        if   score >= 85: label, lo, hi = "Optimal",        85, 100
-        elif score >= 70: label, lo, hi = "Normal",         70, 85
-        elif score >= 55: label, lo, hi = "Borderline",     55, 70
-        elif score >= 40: label, lo, hi = "Mild Concern",   40, 55
+        if   score >= 85: label, lo, hi = "Optimal",          85, 100
+        elif score >= 70: label, lo, hi = "Normal",           70, 85
+        elif score >= 55: label, lo, hi = "Borderline",       55, 70
+        elif score >= 40: label, lo, hi = "Mild Concern",     40, 55
         elif score >= 25: label, lo, hi = "Moderate Concern", 25, 40
-        else:             label, lo, hi = "High Concern",   0,  25
+        else:             label, lo, hi = "High Concern",     0,  25
 
         # Confidence: distance to nearest band edge, normalised
         edge = min(score - lo, hi - score)
