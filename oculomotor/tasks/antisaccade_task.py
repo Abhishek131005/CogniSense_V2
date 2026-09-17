@@ -384,6 +384,13 @@ class AntisaccadeTask:
             cv2.imshow("CogniSense — Oculomotor Assessment", canvas)
             cv2.waitKey(1)
 
+            # ── debug numeric overlay ────────────────────────────────
+            self._ui.debug_overlay(
+                canvas,
+                gp.norm_x if not math.isnan(gp.norm_x) else float("nan"),
+                gp.norm_y if not math.isnan(gp.norm_y) else float("nan"),
+                "…", live_label)
+
         # ── Biomarkers ───────────────────────────────────────────────────
         all_trial_pts = fixation_pts + stim_pts
         self.all_points.extend(all_trial_pts)

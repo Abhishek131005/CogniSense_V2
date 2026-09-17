@@ -5,6 +5,7 @@
 ================================================================================
 """
 
+import math
 from typing import List, Optional, Tuple
 import cv2
 import mediapipe as mp
@@ -77,31 +78,80 @@ class FaceMeshTracker:
         ys = [landmarks[i].y * h for i in indices]
         return float(np.mean(xs)), float(np.mean(ys))
 
+    # ── gaze extraction (rewritten) ───────────────────────────────────────
     @classmethod
     def extract_gaze(cls, landmarks: list, w: int, h: int
                      ) -> Tuple[float, float, float, float]:
-        """Return head-pose-normalised gaze vector for both eyes averaged."""
-        # left eye
+        """
+        Return a *raw* (uncorrected) gaze vector, averaged over both eyes.
+        Convention:
+            norm_x = 0   → iris centred between the corners
+            norm_x < 0   → iris toward the subject's LEFT eye corner
+            norm_x > 0   → iris toward the subject's RIGHT eye corner
+
+        No 0.5 subtraction happens here. The CalibrationEngine removes
+        the subject-specific offset later. This keeps extract_gaze purely
+        descriptive of raw geometry.
+
+        The value is stable because we divide by *the same eye's width*,
+        which is measured from the SAME frame; we do NOT use a stale
+        per-eye width, but we DO clamp it to a sane range to reject
+        frames where MediaPipe mis-places a corner landmark.
+        """
+        # ── left eye ─────────────────────────────────────────────────────
         lcx, lcy   = cls.iris_centroid(landmarks, LIRS_INDICES_FULL, w, h)
         l_inner_x  = landmarks[L_INNER_CORNER].x * w
         l_outer_x  = landmarks[L_OUTER_CORNER].x * w
         l_inner_y  = landmarks[L_INNER_CORNER].y * h
-        l_width    = abs(l_outer_x - l_inner_x) + 1e-6
-        l_height   = l_width * 0.4
-        l_norm_x   = (lcx - l_inner_x) / l_width - 0.5
-        l_norm_y   = (lcy - l_inner_y) / l_height - 0.5
+        l_outer_y  = landmarks[L_OUTER_CORNER].y * h
+        l_width    = abs(l_outer_x - l_inner_x)
+        l_height   = max(abs(l_outer_y - l_inner_y), 1.0)
 
-        # right eye
+        # Reject frames with degenerate eye-width (blink, mis-detect)
+        if l_width < 5.0:
+            l_ratio_x = float("nan")
+            l_ratio_y = float("nan")
+        else:
+            # Project iris onto the line connecting the eye corners so
+            # small head tilts don't corrupt the reading.
+            dx = l_outer_x - l_inner_x
+            dy = l_outer_y - l_inner_y
+            # projection of (iris − inner) onto (outer − inner)
+            proj = ((lcx - l_inner_x) * dx + (lcy - l_inner_y) * dy) \
+                   / (dx * dx + dy * dy)
+            # proj ∈ [0,1] where 0 = inner corner, 1 = outer corner
+            l_ratio_x = proj - 0.5          # centred on 0, ±0.5 at corners
+            l_ratio_y = (lcy - l_inner_y) / l_height - 0.5
+
+        # ── right eye ────────────────────────────────────────────────────
         rcx, rcy   = cls.iris_centroid(landmarks, RIRS_INDICES_FULL, w, h)
         r_inner_x  = landmarks[R_INNER_CORNER].x * w
         r_outer_x  = landmarks[R_OUTER_CORNER].x * w
         r_inner_y  = landmarks[R_INNER_CORNER].y * h
-        r_width    = abs(r_outer_x - r_inner_x) + 1e-6
-        r_height   = r_width * 0.4
-        r_norm_x   = (rcx - r_inner_x) / r_width - 0.5
-        r_norm_y   = (rcy - r_inner_y) / r_height - 0.5
+        r_outer_y  = landmarks[R_OUTER_CORNER].y * h
+        r_width    = abs(r_outer_x - r_inner_x)
+        r_height   = max(abs(r_outer_y - r_inner_y), 1.0)
 
-        avg_norm_x = (l_norm_x + (-r_norm_x)) / 2.0
-        avg_norm_y = (l_norm_y + r_norm_y)     / 2.0
+        if r_width < 5.0:
+            r_ratio_x = float("nan")
+            r_ratio_y = float("nan")
+        else:
+            dx = r_outer_x - r_inner_x
+            dy = r_outer_y - r_inner_y
+            proj = ((rcx - r_inner_x) * dx + (rcy - r_inner_y) * dy) \
+                   / (dx * dx + dy * dy)
+            r_ratio_x = proj - 0.5
+            r_ratio_y = (rcy - r_inner_y) / r_height - 0.5
+
+        # ── combine both eyes ────────────────────────────────────────────
+        # IMPORTANT: because the frame has been flipped horizontally in
+        # the task loop, "inner" and "outer" swap for the RIGHT eye in
+        # image space. The projection formula already accounts for that,
+        # so we just average the two eye ratios directly — NO sign flip.
+        xs = [v for v in (l_ratio_x, r_ratio_x) if not math.isnan(v)]
+        ys = [v for v in (l_ratio_y, r_ratio_y) if not math.isnan(v)]
+
+        avg_norm_x = float(np.mean(xs)) if xs else float("nan")
+        avg_norm_y = float(np.mean(ys)) if ys else float("nan")
 
         return avg_norm_x, avg_norm_y, lcx / w, lcy / h

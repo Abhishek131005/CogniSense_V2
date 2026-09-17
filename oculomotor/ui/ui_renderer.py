@@ -121,9 +121,6 @@ class UIRenderer:
         preview = cv2.resize(frame_bgr, (pw, ph), interpolation=cv2.INTER_AREA)
 
         # ── compute where the box lives INSIDE the preview ───────────────
-        # The box occupies HEAD_BOX_W_FRAC × HEAD_BOX_H_FRAC of the
-        # camera frame, centred. Because we're drawing in preview pixel
-        # space, we scale those fractions to the preview dimensions.
         bw = int(pw * HEAD_BOX_W_FRAC)
         bh = int(ph * HEAD_BOX_H_FRAC)
         bx1 = (pw - bw) // 2
@@ -148,9 +145,6 @@ class UIRenderer:
 
         # ── draw head-position marker ────────────────────────────────────
         if face_detected and not np.isnan(head_x) and not np.isnan(head_y):
-            # head_x, head_y ∈ [0,1] in the ORIGINAL camera frame — but
-            # the frame has already been flipped horizontally in the task
-            # loop, so head_x is in flipped coords. Map to preview pixels:
             px = int(head_x * pw)
             py = int(head_y * ph)
             px = max(0, min(pw - 1, px))
@@ -234,3 +228,13 @@ class UIRenderer:
 
         cv2.putText(canvas, label, (bar_x, bar_y - 12),
                     FONT, 0.55, col, 1, cv2.LINE_AA)
+
+    # ── numeric debug overlay ─────────────────────────────────────────────
+    @staticmethod
+    def debug_overlay(canvas, nx, ny, first_dir, response_label):
+        """Small numeric overlay for debugging — enable only when needed."""
+        h, w = canvas.shape[:2]
+        cv2.putText(canvas,
+                    f"nx={nx:+.3f}  ny={ny:+.3f}  "
+                    f"first={first_dir}  resp={response_label}",
+                    (20, h - 140), FONT, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
