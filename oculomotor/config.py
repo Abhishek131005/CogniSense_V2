@@ -84,3 +84,13 @@ RIGHT_CHEEK    = 454
 
 # ── Optional: debug flag ──────────────────────────────────────────────────────
 DEBUG_MODE     = False
+
+# ── Eyelid landmarks (for vertical gaze normalisation) ────────────────────────
+L_UPPER_LID = 159
+L_LOWER_LID = 145
+R_UPPER_LID = 386
+R_LOWER_LID = 374
+
+# config.py — should contain
+GAZE_X_GAIN = 1.0
+GAZE_Y_GAIN = 1.0
