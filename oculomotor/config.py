@@ -27,7 +27,10 @@ FIXATION_DURATION_S    = 1.5
 RESPONSE_WINDOW_S      = 1.5
 STIMULUS_OFFSET_PX     = 300
 SACCADE_VELOCITY_DEG_S = 30.0    # threshold to call something a saccade
-ERROR_WINDOW_MS        = 700.0   # first saccade after stimulus decides error
+
+#supposedly this was the reason that even if we looked in the correct direction, it was still being classified as an error bcz we would start moving the eyes later than 700ms after the stimulus onset. So we increased this to 1000ms to give more time for the eyes to move in the correct direction. 
+#ERROR_WINDOW_MS        = 700.0   # first saccade after stimulus decides error
+ERROR_WINDOW_MS        = 1200.0   # first saccade after stimulus decides error
 
 # ── Smooth pursuit task ───────────────────────────────────────────────────────
 PURSUIT_CYCLES         = 5
@@ -97,3 +100,7 @@ GAZE_Y_GAIN = 1.0
 
 # ── Debug overlays ────────────────────────────────────────────────────────────
 DEBUG_LANDMARKS = True   # set False to hide iris/corner/nose markers
+
+# ── Debug output ──────────────────────────────────────────────────────────────
+DEBUG_SAVE_TRIALS = True
+DEBUG_DIR = OUTPUT_DIR / "trials"
