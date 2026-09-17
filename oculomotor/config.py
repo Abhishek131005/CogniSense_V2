@@ -94,3 +94,6 @@ R_LOWER_LID = 374
 # config.py — should contain
 GAZE_X_GAIN = 1.0
 GAZE_Y_GAIN = 1.0
+
+# ── Debug overlays ────────────────────────────────────────────────────────────
+DEBUG_LANDMARKS = True   # set False to hide iris/corner/nose markers

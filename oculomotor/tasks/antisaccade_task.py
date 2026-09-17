@@ -18,6 +18,7 @@ from ..config import (
     COL_TEXT, COL_WARN, COL_GOOD, COL_BAD, COL_GAZE,
     HEAD_BOX_W_FRAC, HEAD_BOX_H_FRAC,
     HEAD_BOX_TOLERANCE, HEAD_CENTER_MIN_HOLD_S,
+    DEBUG_LANDMARKS,
 )
 from ..data.data_containers import GazePoint, TrialResult
 from ..tracking.face_mesh_tracker import FaceMeshTracker
@@ -33,13 +34,13 @@ class AntisaccadeTask:
     def __init__(self, tracker: FaceMeshTracker,
                  calibration: CalibrationEngine,
                  n_trials: int = ANTISACCADE_TRIALS):
-        self.tracker      = tracker
-        self.cal          = calibration
-        self.n_trials     = n_trials
-        self.trial_sides  : List[str]           = []
-        self.all_points   : List[GazePoint]     = []
-        self.trial_results: List[TrialResult]   = []
-        self._ui          = UIRenderer()
+        self.tracker       = tracker
+        self.cal           = calibration
+        self.n_trials      = n_trials
+        self.trial_sides   : List[str]           = []
+        self.all_points    : List[GazePoint]     = []
+        self.trial_results : List[TrialResult]   = []
+        self._ui           = UIRenderer()
 
     # ── camera ────────────────────────────────────────────────────────────
     @staticmethod
@@ -113,9 +114,8 @@ class AntisaccadeTask:
         cx = w // 2
         return cx - STIMULUS_OFFSET_PX if side == "left" else cx + STIMULUS_OFFSET_PX
 
-
-        # ── calibration ready screen ──────────────────────────────────────────
-    def _show_calibration_ready(self, cap):
+    # ── calibration ready screen ──────────────────────────────────────────
+    def _show_calibration_ready(self, cap) -> bool:
         """
         Wait for the subject to press SPACE before starting calibration.
         Gives them time to settle, remove glasses, etc.
@@ -136,15 +136,15 @@ class AntisaccadeTask:
             if not ret:
                 continue
             frame = cv2.flip(frame, 1)
-            h, w  = frame.shape[:2]
+            h, w = frame.shape[:2]
             canvas = self._ui.blank(w, h)
 
             y0 = h // 2 - len(lines) * 28 // 2
             for i, line in enumerate(lines):
-                sz    = 0.9 if i == 0 else 0.65
-                col   = (255, 200, 50) if i == 0 else COL_TEXT
+                sz = 0.9 if i == 0 else 0.65
+                col = (255, 200, 50) if i == 0 else COL_TEXT
                 (tw, _), _ = cv2.getTextSize(line, FONT, sz, 2)
-                cx_   = (w - tw) // 2
+                cx_ = (w - tw) // 2
                 cv2.putText(canvas, line, (cx_, y0 + i * 35),
                             FONT, sz, col, 2, cv2.LINE_AA)
 
@@ -154,6 +154,8 @@ class AntisaccadeTask:
             if lm:
                 hx, hy = FaceMeshTracker.head_center(lm)
                 inside = self._head_inside_box(hx, hy)
+                if DEBUG_LANDMARKS:
+                    self._ui.mp_landmarks(frame, lm)
 
             self._ui.camera_preview_with_headlock(
                 canvas, frame, hx, hy, inside,
@@ -166,6 +168,7 @@ class AntisaccadeTask:
             if key == 27:    # ESC
                 return False
         return True
+
     # ── calibration ───────────────────────────────────────────────────────
     def run_calibration(self, cap):
         print("[INFO] Starting calibration...")
@@ -175,10 +178,10 @@ class AntisaccadeTask:
             if not ret:
                 continue
             frame = cv2.flip(frame, 1)
-            h, w  = frame.shape[:2]
+            h, w = frame.shape[:2]
             canvas = self._ui.blank(w, h)
 
-            # central fixation dot — this is what the subject looks at
+            # central fixation dot
             cv2.circle(canvas, (w // 2, h // 2), 25, (255, 255, 255), -1)
 
             remaining = max(0, end - time.time())
@@ -195,8 +198,9 @@ class AntisaccadeTask:
                 hx, hy = FaceMeshTracker.head_center(lm)
                 inside = self._head_inside_box(hx, hy)
                 self.cal.add_sample(nx, ny, hx, hy)
+                if DEBUG_LANDMARKS:
+                    self._ui.mp_landmarks(frame, lm)
 
-            # camera preview with head box + marker on top
             self._ui.camera_preview_with_headlock(
                 canvas, frame, hx, hy, inside,
                 face_detected=(lm is not None))
@@ -225,15 +229,15 @@ class AntisaccadeTask:
             if not ret:
                 continue
             frame = cv2.flip(frame, 1)
-            h, w  = frame.shape[:2]
+            h, w = frame.shape[:2]
             canvas = self._ui.blank(w, h)
 
             y0 = h // 2 - len(lines) * 28 // 2
             for i, line in enumerate(lines):
-                sz    = 0.9 if i == 0 else 0.65
-                col   = (255, 200, 50) if i == 0 else COL_TEXT
+                sz = 0.9 if i == 0 else 0.65
+                col = (255, 200, 50) if i == 0 else COL_TEXT
                 (tw, th), _ = cv2.getTextSize(line, FONT, sz, 2)
-                cx_   = (w - tw) // 2
+                cx_ = (w - tw) // 2
                 cv2.putText(canvas, line, (cx_, y0 + i * 35),
                             FONT, sz, col, 2, cv2.LINE_AA)
 
@@ -243,6 +247,8 @@ class AntisaccadeTask:
             if lm:
                 hx, hy = FaceMeshTracker.head_center(lm)
                 inside = self._head_inside_box(hx, hy)
+                if DEBUG_LANDMARKS:
+                    self._ui.mp_landmarks(frame, lm)
 
             self._ui.camera_preview_with_headlock(
                 canvas, frame, hx, hy, inside,
@@ -262,7 +268,7 @@ class AntisaccadeTask:
             if not ret:
                 continue
             frame = cv2.flip(frame, 1)
-            h, w  = frame.shape[:2]
+            h, w = frame.shape[:2]
             canvas = self._ui.blank(w, h)
 
             lm = self.tracker.process_frame(frame)
@@ -271,6 +277,8 @@ class AntisaccadeTask:
             if lm:
                 hx, hy = FaceMeshTracker.head_center(lm)
                 inside = self._head_inside_box(hx, hy)
+                if DEBUG_LANDMARKS:
+                    self._ui.mp_landmarks(frame, lm)
 
             now = time.time()
             if inside:
@@ -306,14 +314,13 @@ class AntisaccadeTask:
 
     # ── single trial ──────────────────────────────────────────────────────
     def _run_trial(self, cap, trial_id: int, side: str) -> Optional[TrialResult]:
-        # ensure head is locked before we begin
         if not self._wait_for_head_inside(cap, f"Trial {trial_id}/{self.n_trials}"):
             return None
 
         fixation_pts: List[GazePoint] = []
         stim_pts    : List[GazePoint] = []
         head_moved  = False
-        h_ref, w_ref = 720, 1280   # safe defaults; updated on first frame
+        h_ref, w_ref = 720, 1280
 
         # ── Phase 1: Fixation ────────────────────────────────────────────
         end_fix = time.time() + FIXATION_DURATION_S
@@ -335,8 +342,14 @@ class AntisaccadeTask:
             fixation_pts.append(gp)
             if not gp.head_inside:
                 head_moved = True
-            if gp.face_detected and not math.isnan(gp.norm_x):
-                self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y)
+
+            if gp.face_detected and not math.isnan(gp.norm_x) and not math.isnan(gp.norm_y):
+                self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y, colour=COL_GAZE)
+
+            if DEBUG_LANDMARKS:
+                lm = self.tracker.process_frame(frame)
+                if lm is not None:
+                    self._ui.mp_landmarks(frame, lm)
 
             self._ui.camera_preview_with_headlock(
                 canvas, frame, gp.head_x, gp.head_y, gp.head_inside,
@@ -363,12 +376,11 @@ class AntisaccadeTask:
             self._ui.fixation_cross(canvas, w_ref // 2, h_ref // 2, size=15)
 
             instr = f"Look {'RIGHT' if side == 'left' else 'LEFT'}!"
+            (tw, _), _ = cv2.getTextSize(instr, FONT, 0.9, 2)
             cv2.putText(canvas, instr,
-                        ((w_ref - cv2.getTextSize(instr, FONT, 0.9, 2)[0][0]) // 2,
-                         h_ref // 2 - 60),
+                        ((w_ref - tw) // 2, h_ref // 2 - 60),
                         FONT, 0.9, (200, 200, 50), 2, cv2.LINE_AA)
-            self._ui.status_bar(canvas,
-                f"Trial {trial_id}/{self.n_trials}  ·  {instr}")
+            self._ui.status_bar(canvas, f"Trial {trial_id}/{self.n_trials}  ·  {instr}")
             self._ui.progress_bar(canvas, trial_id - 1, self.n_trials)
 
             t  = time.time()
@@ -376,14 +388,20 @@ class AntisaccadeTask:
             stim_pts.append(gp)
             if not gp.head_inside:
                 head_moved = True
-            if gp.face_detected and not math.isnan(gp.norm_x):
-                self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y)
+
+            if gp.face_detected and not math.isnan(gp.norm_x) and not math.isnan(gp.norm_y):
+                self._ui.gaze_dot(canvas, gp.norm_x, gp.norm_y, colour=COL_GAZE)
                 if gp.norm_x < -0.15:
                     live_label, live_col = "LOOKING LEFT", COL_GAZE
                 elif gp.norm_x > 0.15:
                     live_label, live_col = "LOOKING RIGHT", COL_GAZE
                 else:
                     live_label, live_col = "CENTERED", COL_TEXT
+
+            if DEBUG_LANDMARKS:
+                lm = self.tracker.process_frame(frame)
+                if lm is not None:
+                    self._ui.mp_landmarks(frame, lm)
 
             self._ui.camera_preview_with_headlock(
                 canvas, frame, gp.head_x, gp.head_y, gp.head_inside,
@@ -396,7 +414,7 @@ class AntisaccadeTask:
                 f"Your gaze (●)   vs.   Correct target (▮)   ·   {live_label}",
                 live_col)
 
-            # ── debug numeric overlay (must be drawn BEFORE imshow) ──
+            # ── debug numeric overlay ────────────────────────────────────
             self._ui.debug_overlay(
                 canvas,
                 gp.norm_x if not math.isnan(gp.norm_x) else float("nan"),
@@ -410,12 +428,10 @@ class AntisaccadeTask:
         all_trial_pts = fixation_pts + stim_pts
         self.all_points.extend(all_trial_pts)
 
-        # Require BOTH axes to be finite, otherwise downstream math (velocity,
-        # RMSD) produces NaN and the trial is silently mis-classified.
-        valid_fix  = [p for p in fixation_pts
-                      if p.face_detected
-                      and not math.isnan(p.norm_x)
-                      and not math.isnan(p.norm_y)]
+        valid_fix = [p for p in fixation_pts
+                     if p.face_detected
+                     and not math.isnan(p.norm_x)
+                     and not math.isnan(p.norm_y)]
         valid_stim = [p for p in stim_pts
                       if p.face_detected
                       and not math.isnan(p.norm_x)

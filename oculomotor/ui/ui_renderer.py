@@ -238,3 +238,50 @@ class UIRenderer:
                     f"nx={nx:+.3f}  ny={ny:+.3f}  "
                     f"first={first_dir}  resp={response_label}",
                     (20, h - 140), FONT, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # ── MediaPipe landmark overlay (iris + corners + nose) ────────────────
+    @staticmethod
+    def mp_landmarks(canvas: np.ndarray, landmarks: list):
+        """
+        Draw MediaPipe iris ring, eye corners, and nose tip on the canvas.
+        Same colours as the debug iris visualiser so behaviour is
+        consistent between debug and live-trial views:
+
+            left iris    → yellow
+            right iris   → cyan
+            left  corners→ green (inner) / dark green (outer)
+            right corners→ red   (inner) / dark red   (outer)
+            nose tip     → magenta
+        """
+        if landmarks is None:
+            return
+        h, w = canvas.shape[:2]
+
+        from ..config import (
+            L_INNER_CORNER, L_OUTER_CORNER, R_INNER_CORNER, R_OUTER_CORNER,
+            LIRS_INDICES_FULL, RIRS_INDICES_FULL,
+        )
+
+        # iris rings
+        for idx in LIRS_INDICES_FULL:
+            p = landmarks[idx]
+            cv2.circle(canvas, (int(p.x * w), int(p.y * h)),
+                       3, (255, 255, 0), -1)
+        for idx in RIRS_INDICES_FULL:
+            p = landmarks[idx]
+            cv2.circle(canvas, (int(p.x * w), int(p.y * h)),
+                       3, (0, 255, 255), -1)
+
+        # eye corners
+        for idx, col in [(L_INNER_CORNER, (0, 255, 0)),
+                         (L_OUTER_CORNER, (0, 200, 0)),
+                         (R_INNER_CORNER, (0, 0, 255)),
+                         (R_OUTER_CORNER, (0, 0, 200))]:
+            p = landmarks[idx]
+            cv2.circle(canvas, (int(p.x * w), int(p.y * h)),
+                       5, col, -1)
+
+        # nose tip
+        p = landmarks[1]
+        cv2.circle(canvas, (int(p.x * w), int(p.y * h)),
+                   4, (255, 0, 255), -1)
