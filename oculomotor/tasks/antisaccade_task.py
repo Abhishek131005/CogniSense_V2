@@ -121,13 +121,18 @@ class AntisaccadeTask:
         Gives them time to settle, remove glasses, etc.
         """
         lines = [
-            "GET READY FOR CALIBRATION",
+             "GET READY FOR CALIBRATION",
+            
+            "   •  Sit close to the screen — your face should fill",
+            "      most of the camera preview (top-right).",
+            "   •  Make sure your face is well lit",
+            "   •  Remove glasses if possible; they can confuse",
+            "      the iris tracker.",
+            "   •  Keep your HEAD still and centred inside the",
+            "      grey box in the preview at all times.",
             "",
-            "In a moment you will see a white dot in the centre.",
-            "Please look at the dot and keep your HEAD still",
-            "inside the box shown in the top-right preview.",
-            "",
-            "Calibration takes about 5 seconds.",
+            "Calibration takes about 5 seconds. You will see a",
+            "white dot in the middle — simply look at it.",
             "",
             "Press SPACE when you are ready.",
         ]
@@ -218,9 +223,19 @@ class AntisaccadeTask:
         lines = [
             "ANTISACCADE TASK",
             "",
-            "Keep your HEAD inside the small box (top-right preview).",
-            "A red dot will appear LEFT or RIGHT.",
-            "Look at the OPPOSITE side from the dot.",
+            "You will see a red dot appear on the LEFT or RIGHT.",
+            "",
+            "Your job:  look to the OPPOSITE side.",
+            "           •  If the dot appears on the LEFT,  look HARD RIGHT.",
+            "           •  If the dot appears on the RIGHT, look HARD LEFT.",
+            "",
+            "LOOK AS FAR AS YOUR EYES CAN GO to the opposite side —",
+            "do not stop halfway. The task measures your full range.",
+            "",
+            "IMPORTANT:  do NOT move your head, not even slightly.",
+            "            Only your EYES should move.",
+            "            Keep your head inside the grey box in the",
+            "            top-right preview at all times.",
             "",
             "Press SPACE to begin.",
         ]
