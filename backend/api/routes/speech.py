@@ -28,6 +28,8 @@ def speech_health() -> dict:
         "model_loaded": analyzer.model_loaded,
         "asr_model_id": active_model,
         "asr_requested_model_id": analyzer.asr_model_id,
+        "screening_model_loaded": analyzer.screening_model is not None,
+        "screening_model_path": analyzer.screening_model_path or None,
     }
 
 

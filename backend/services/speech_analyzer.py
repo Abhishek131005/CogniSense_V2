@@ -58,6 +58,14 @@ try:
 except Exception:
     LANGDETECT_OK = False
 
+try:
+    import joblib
+
+    JOBLIB_OK = True
+except Exception:
+    joblib = None
+    JOBLIB_OK = False
+
 FILLER_SET_BY_LANG = {
     "en": {"uh", "um", "er", "ah", "like", "well", "actually", "you", "know"},
     "hi": {"uh", "um", "मतलब", "तो", "हां"},
@@ -105,6 +113,30 @@ WHISPER_LANGUAGE_TOKEN_BY_CODE = {
 
 logger = logging.getLogger(__name__)
 
+SCREENING_FEATURE_COLUMNS = [
+    "duration_seconds",
+    "pause_ratio",
+    "total_silence_ratio",
+    "speech_rate_syllables_per_min",
+    "f0_mean_hz",
+    "f0_std_hz",
+    "f0_range_hz",
+    "spectral_centroid_hz",
+    "spectral_rolloff_hz",
+    "spectral_bandwidth_hz",
+    "zero_crossing_rate",
+    "vocal_energy_mean",
+    "vocal_energy_std",
+    "type_token_ratio",
+    "guiraud_r",
+    "mean_word_length",
+    "filler_word_ratio",
+    "repetition_ratio",
+    "hapax_ratio",
+    "word_count",
+    "unique_word_count",
+]
+
 
 @dataclass
 class _PitchStats:
@@ -141,7 +173,27 @@ class SpeechAnalyzer:
         self.asr_effective_model_id = None
         self.asr_enable_retry = os.getenv("COGNISENSE_ASR_ENABLE_RETRY", "false").lower() == "true"
         self.enable_asr = os.getenv("COGNISENSE_ENABLE_ASR", "true").lower() == "true"
+        self.screening_model_path = os.getenv("COGNISENSE_SPEECH_SCREENING_MODEL", "").strip()
+        self.screening_model = self._load_screening_model()
         self._load_asr()
+
+    def _load_screening_model(self):
+        if not self.screening_model_path:
+            return None
+        if not JOBLIB_OK:
+            logger.warning("Speech screening model requested but joblib is unavailable")
+            return None
+        if not os.path.isfile(self.screening_model_path):
+            logger.warning("Speech screening model not found: %s", self.screening_model_path)
+            return None
+        try:
+            model = joblib.load(self.screening_model_path)
+            if not hasattr(model, "predict_proba"):
+                raise ValueError("model does not expose predict_proba")
+            return model
+        except Exception as exc:
+            logger.warning("Speech screening model load failed: %s", exc)
+            return None
 
     def _load_asr(self) -> None:
         global torch, pipeline, ASR_OK
@@ -201,7 +253,7 @@ class SpeechAnalyzer:
 
         acoustic = self._extract_acoustic(y, sr, duration)
         lexico = self._extract_lexico(y, sr, language=language)
-        risk_score = self._score(acoustic, lexico, duration)
+        risk_score = self._screening_score(acoustic, lexico, duration)
         interpretation = self._interpret(risk_score, acoustic, lexico)
 
         return SpeechAnalysisResult(
@@ -211,9 +263,52 @@ class SpeechAnalyzer:
             risk_score=round(risk_score, 1),
             risk_class=interpretation.risk_class,
             interpretation=interpretation,
-            model_used="CogniSense Speech v1 (acoustic+lexical)",
+            model_used=(
+                "CogniSense public-data screening model"
+                if self.screening_model is not None
+                else "CogniSense Speech v1 (acoustic+lexical)"
+            ),
             wav2vec_available=self.model_loaded,
         )
+
+    def _screening_score(
+        self,
+        acoustic: AcousticFeatures,
+        lexico: LexicoSemanticFeatures,
+        duration: float,
+    ) -> float:
+        if self.screening_model is None:
+            return self._score(acoustic, lexico, duration)
+
+        features = {
+            "duration_seconds": duration,
+            "pause_ratio": acoustic.pause_ratio,
+            "total_silence_ratio": acoustic.total_silence_ratio,
+            "speech_rate_syllables_per_min": acoustic.speech_rate_syllables_per_min,
+            "f0_mean_hz": acoustic.f0_mean_hz,
+            "f0_std_hz": acoustic.f0_std_hz,
+            "f0_range_hz": acoustic.f0_range_hz,
+            "spectral_centroid_hz": acoustic.spectral_centroid_hz,
+            "spectral_rolloff_hz": acoustic.spectral_rolloff_hz,
+            "spectral_bandwidth_hz": acoustic.spectral_bandwidth_hz,
+            "zero_crossing_rate": acoustic.zero_crossing_rate,
+            "vocal_energy_mean": acoustic.vocal_energy_mean,
+            "vocal_energy_std": acoustic.vocal_energy_std,
+            "type_token_ratio": lexico.type_token_ratio,
+            "guiraud_r": lexico.guiraud_r,
+            "mean_word_length": lexico.mean_word_length,
+            "filler_word_ratio": lexico.filler_word_ratio,
+            "repetition_ratio": lexico.repetition_ratio,
+            "hapax_ratio": lexico.hapax_ratio,
+            "word_count": lexico.word_count,
+            "unique_word_count": lexico.unique_word_count,
+        }
+        try:
+            vector = np.array([[float(features[column]) for column in SCREENING_FEATURE_COLUMNS]])
+            return float(np.clip(self.screening_model.predict_proba(vector)[0, 1] * 100.0, 0.0, 100.0))
+        except Exception as exc:
+            logger.warning("Speech screening model inference failed; using baseline score: %s", exc)
+            return self._score(acoustic, lexico, duration)
 
     def _load_audio(self, audio_path: str) -> tuple[np.ndarray, int]:
         if LIBROSA_OK:
@@ -439,12 +534,18 @@ class SpeechAnalyzer:
             range_hz=float(arr.max() - arr.min()),
         )
 
-    def _extract_lexico(self, y: np.ndarray, sr: int, language: str = "auto") -> LexicoSemanticFeatures:
-        transcript = ""
+    def _extract_lexico(
+        self,
+        y: np.ndarray,
+        sr: int,
+        language: str = "auto",
+        transcript_override: str | None = None,
+    ) -> LexicoSemanticFeatures:
+        transcript = str(transcript_override or "").strip()
         selected_language = self._normalize_language_code(language or "auto")
         detected_language = selected_language
 
-        if self.model_loaded and self.asr_pipeline is not None:
+        if not transcript and self.model_loaded and self.asr_pipeline is not None:
             try:
                 asr_array = self._prepare_asr_audio(y, sr)
 
