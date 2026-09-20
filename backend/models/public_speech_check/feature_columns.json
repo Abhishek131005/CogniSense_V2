@@ -1,0 +1,23 @@
+[
+  "duration_seconds",
+  "pause_ratio",
+  "total_silence_ratio",
+  "speech_rate_syllables_per_min",
+  "f0_mean_hz",
+  "f0_std_hz",
+  "f0_range_hz",
+  "spectral_centroid_hz",
+  "spectral_rolloff_hz",
+  "spectral_bandwidth_hz",
+  "zero_crossing_rate",
+  "vocal_energy_mean",
+  "vocal_energy_std",
+  "type_token_ratio",
+  "guiraud_r",
+  "mean_word_length",
+  "filler_word_ratio",
+  "repetition_ratio",
+  "hapax_ratio",
+  "word_count",
+  "unique_word_count"
+]
