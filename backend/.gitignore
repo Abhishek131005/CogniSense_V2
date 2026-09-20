@@ -8,3 +8,4 @@ models/cdt_cnn.pth
 models/public_speech/
 tmp_public_speech_check/
 .venv/
+models/public_speech_check/public_speech_dataset.parquet
