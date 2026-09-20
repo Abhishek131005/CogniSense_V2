@@ -5,3 +5,6 @@ __pycache__/
 .env
 train/data/
 models/cdt_cnn.pth
+models/public_speech/
+tmp_public_speech_check/
+.venv/
